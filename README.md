@@ -18,6 +18,7 @@ Before you start, make sure these programs are installed on your computer:
 - [**Node.js**](https://nodejs.org) (v20.0 or higher) → Add to PATH and check in your terminal with `node -v` and `npm -v`
 - [**Python**](https://www.python.org/downloads) (v3.13 or higher) → Add to PATH and check in your terminal with `python --version` and `pip --version`
 - [**FFmpeg**](https://www.gyan.dev/ffmpeg/builds) → Add to PATH and check in your terminal with `ffmpeg -version`
+- [**Chromaprint**](https://acoustid.org/chromaprint) → **Chromaprint's `fpcalc` binary is only required if you are using Linux or MacOS**
 
   ![Programs](images/programs.png)
 
@@ -29,7 +30,7 @@ To use WerZatSong effectively, you'll also need the following:
 - **Audiotag API key** → Required for Audiotag search mode (see *"How to Get an Audiotag API Key"* below)
 - **AcoustID API key** → Required for MusicBrainz search mode (see *"How to Get an AcoustID API Key"* below)
 - **Database for Audfprint** → Required for Audfprint search mode (see *"Download the Audfprint Database"* below)
-  - **Storage Alert** → The database is approximately **35GB**. If possible, place on an **SSD** for faster performance
+  - **Storage Alert** → The database requires a significant amount of disk space. Using an **SSD** is recommended for better performance
 
 #### How to Get a Discord Webhook URL
 
@@ -56,7 +57,7 @@ To use WerZatSong effectively, you'll also need the following:
 
 #### Download the Audfprint Database
 
-- Download the **database folders** that contain the **PKLZ files** from either [**Google Drive**](https://drive.google.com/drive/u/1/folders/1O6Xv3BhQhvNdqkZLcVvtmh9VD7HTV57f) or from this [**Mirror**](https://pastebin.com/ATyv1LFP)
+- Download the **database folders** that contain the **PKLZ files** from either [**Google Drive**](https://drive.google.com/drive/u/1/folders/1O6Xv3BhQhvNdqkZLcVvtmh9VD7HTV57f) or from this [**Mirror**](https://file.cosine.club/share/rrif4NPv)
 - The folders are organized by **genres** or **sources** (e.g., `"indie-rock"`, `"watzatsong"`)
 
 ### Program Installation
