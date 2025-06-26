@@ -18,7 +18,7 @@ Before you start, make sure these programs are installed on your computer:
 - [**Node.js**](https://nodejs.org) (v20.0 or higher) → Add to PATH and check in your terminal with `node -v` and `npm -v`
 - [**Python**](https://www.python.org/downloads) (v3.13 or higher) → Add to PATH and check in your terminal with `python --version` and `pip --version`
 - [**FFmpeg**](https://www.gyan.dev/ffmpeg/builds) → Add to PATH and check in your terminal with `ffmpeg -version`
-- [**Chromaprint**](https://acoustid.org/chromaprint) → **Chromaprint's `fpcalc` binary is only required if you are using Linux or MacOS**
+- [**Chromaprint**](https://acoustid.org/chromaprint) → **Chromaprint's `fpcalc` binary is only required if you are using Linux or MacOS. You will also need to change the `FPCALC_COMMAND` variable from the `.env` file**
 
   ![Programs](images/programs.png)
 
