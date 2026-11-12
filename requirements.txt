@@ -3,3 +3,5 @@ joblib
 numpy
 psutil
 scipy
+# Optional: loads Audfprint database files about three times faster (used automatically when installed)
+# isal

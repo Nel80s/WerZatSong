@@ -166,6 +166,18 @@ node werzatsong.js --audfprint
 
 - **`--folder <subfolder>`** → Selects a specific subfolder inside the `database` folder. This is useful if you want to search only fingerprints within a certain genre or source instead of processing all fingerprints from all folders at once, which takes longer (e.g., `--folder "indie-rock"`)
 - **`--threads <number>`** → Sets the number of processing threads (e.g., `--threads 4`) [**max**: 16] [**default**: max threads available in your machine]
+- **`--shifts <number>`** → Query-side audfprint `--shifts`, from 1 to 8. Higher is more robust but slower (e.g., `--shifts 2` for a quicker search) [**default**: 4]
+- **`--shard-timeout <minutes>`** → How long one database file may take before its matcher is stopped and the file is reported as failed [**default**: 15]
+- **`--resume`** → Continues an Audfprint search that stopped part-way (crash, cancel): only the database files it had not finished are searched, then the results are reported as usual
+- **`--merge <subfolder>`** → Database maintenance: merges the PKLZ files in `database/<subfolder>` into a few large shards, then exits (pass `""` for the database root). `--shard-files <number>` [**default**: 64] sets how many source files go into each merged shard, and `--max-dropped <percent>` [**default**: 3] discards a merged shard that loses more than that share of its hashes to full buckets
+
+#### Audfprint Search Speed
+
+Each worker keeps one Python matcher running for the whole search instead of starting Python once per database file, and a PKLZ file is loaded much faster than before. The results of a search are unchanged. Three settings are optional; none is needed:
+
+- **isal** → `python -m pip install isal` makes loading a database file about three times faster. It is used automatically when it is installed; `FAST_INFLATE=off` in `.env` turns it off
+- **`VERIFY_CHECKSUMS=always`** in `.env` → Without isal, the checksum of a database file is verified the first time it is read and about once a month after that, as long as its size and date stay the same (the list is kept in `cache/pklz-verified.json`). This setting verifies every file on every search instead. With isal every file is verified on every search anyway
+- **`DISK_PRIORITY=normal`** in `.env` → Windows only: reads the database at normal disk priority even when the search is started by a scheduled task. Task Scheduler otherwise gives everything it starts low disk priority, which slows a search down a lot
 
 ### 2. Audiotag
 

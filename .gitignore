@@ -1,5 +1,6 @@
 # Folders
 **/__pycache__/
+cache/
 database/
 input/
 logs/
@@ -11,3 +12,4 @@ temp/
 # Files
 .env
 package-lock.json
+werzatsong.lock

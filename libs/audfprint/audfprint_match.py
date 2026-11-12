@@ -127,10 +127,16 @@ class Matcher(object):
             hits is a matrix as returned by hash_table.get_hits()
             with rows of consisting of [id dtime hash otime] """
         allids = hits[:, 0]
-        ids = np.unique(allids)
+        # LOCAL MODIFICATION (2026-11-11, scan speed): the ids
+        # present are read off the counts instead of np.unique() sorting or
+        # hashing every hit a second time. Same two arrays: the ids in
+        # ascending order with the hits' own dtype, and their counts.
+        # Re-apply this if audfprint is ever updated from upstream.
+        allcounts = np.bincount(allids)
+        ids = np.flatnonzero(allcounts).astype(allids.dtype)
         # rawcounts = np.sum(np.equal.outer(ids, allids), axis=1)
         # much faster, and doesn't explode memory
-        rawcounts = np.bincount(allids)[ids]
+        rawcounts = allcounts[ids]
         # Divide the raw counts by the total number of hashes stored
         # for the ref track, to downweight large numbers of chance
         # matches against longer reference tracks.
@@ -242,6 +248,99 @@ class Matcher(object):
     def _approx_match_counts(self, hits, ids, rawcounts):
         """ Quick and slightly inaccurate routine to count time-aligned hits.
 
+        LOCAL MODIFICATION (2026-11-11, scan speed). Same rows as
+        _approx_match_counts_by_time() below, which is the routine as it was
+        and still does the work when the time range is wanted
+        (--find-time-range needs the hits in time order). Without it, the
+        order of the hits changes nothing: each id's skew histogram is all
+        that is read. So the hits are no longer sorted by time and copied,
+        and the histogram of an id is no longer rebuilt by scanning every hit
+        for it (twice): one sort of (id, skew) pairs gives the bins of every
+        id, and each id the loop reaches is cut out of that. Only hits of the
+        ids to check take part. The rows, their order and their values are
+        the same.
+        Re-apply this if audfprint is ever updated from upstream.
+
+        Args, Returns: see _approx_match_counts_by_time().
+        """
+        if self.find_time_range:
+            return self._approx_match_counts_by_time(hits, ids, rawcounts)
+        results = np.zeros((len(ids), 7), np.int32)
+        if not hits.size:
+            # No hits found, return empty results
+            return results
+        allids = hits[:, 0].astype(np.int64)
+        alltimes = hits[:, 1].astype(np.int64)
+        # Make sure every value in alltimes is >=0 for bincount
+        mintime = np.amin(alltimes)
+        alltimes -= mintime
+        span = int(alltimes.max()) + 1
+        # Hits of the ids that are to be checked; no other id is looked at.
+        ids_to_check = np.asarray(ids).astype(np.int64)
+        valid = ids_to_check[ids_to_check >= 0]
+        wanted = np.zeros(int(max(allids.max(), valid.max() if len(valid) else 0)) + 1, bool)
+        wanted[valid] = True
+        chosen = wanted[allids] if allids.min() >= 0 else wanted[np.maximum(allids, 0)] & (allids >= 0)
+        idskew = allids[chosen] * span + alltimes[chosen]
+        if len(idskew) == 0:
+            return results[:0, :]
+        # Each distinct (id, skew) pair once, with how many hits fell on it:
+        # what np.unique(..., return_counts=True) returns.
+        idskew.sort()
+        first = np.empty(len(idskew), bool)
+        first[0] = True
+        np.not_equal(idskew[1:], idskew[:-1], out=first[1:])
+        starts = np.flatnonzero(first)
+        idskew_counts = np.diff(np.append(starts, len(idskew)))
+        idskew = idskew[starts]
+        # An id whose fullest (id, skew) bin holds threshcount hits or fewer
+        # leaves the loop on its first check without a row: keep_local_maxes()
+        # never raises a bin.
+        has_bin_over_threshold = np.zeros(len(wanted), bool)
+        has_bin_over_threshold[idskew[idskew_counts > self.threshcount] // span] = True
+        nresults = 0
+        min_time = 0
+        max_time = 0
+        for urank in np.flatnonzero(has_bin_over_threshold[np.maximum(ids_to_check, 0)]
+                                    & (ids_to_check >= 0)).tolist():
+            id = int(ids_to_check[urank])
+            rawcount = rawcounts[urank]
+            # This id's skew histogram, as np.bincount() of its hits' skews
+            # gives it: one bin per skew from 0 to its largest.
+            low = np.searchsorted(idskew, id * span)
+            high = np.searchsorted(idskew, (id + 1) * span)
+            skews = idskew[low:high] - id * span
+            bincounts = np.zeros(int(skews[-1]) + 1, np.intp)
+            bincounts[skews] = idskew_counts[low:high]
+            still_looking = True
+            # Only consider legit local maxima in bincounts.
+            filtered_bincounts = keep_local_maxes(bincounts)
+            found_this_id = 0
+            while still_looking:
+                mode = np.argmax(filtered_bincounts)
+                if filtered_bincounts[mode] <= self.threshcount:
+                    # Too few - skip to the next id
+                    still_looking = False
+                    continue
+                count = np.sum(bincounts[max(0, mode - self.window):
+                                         (mode + self.window + 1)])
+                results[nresults, :] = [id, count, mode + mintime, rawcount,
+                                        urank, min_time, max_time]
+                nresults += 1
+                if nresults >= results.shape[0]:
+                    results = np.vstack([results, np.zeros(results.shape,
+                                                           np.int32)])
+                # Clear this hit to find next largest.
+                filtered_bincounts[max(0, mode - self.window):
+                                   (mode + self.window + 1)] = 0
+                found_this_id += 1
+                if found_this_id > self.max_alignments_per_id:
+                    still_looking = False
+        return results[:nresults, :]
+
+    def _approx_match_counts_by_time(self, hits, ids, rawcounts):
+        """ Quick and slightly inaccurate routine to count time-aligned hits.
+
         Only considers largest mode for reference ID match.
 
         Args:
@@ -275,12 +374,28 @@ class Matcher(object):
         # Make sure every value in alltimes is >=0 for bincount
         mintime = np.amin(alltimes)
         alltimes -= mintime
+        # LOCAL MODIFICATION (not upstream audfprint): skip ids that cannot
+        # produce a row. The loop below rebuilds one id's skew histogram per
+        # pass over every hit, for up to --search-depth (10000) ids, and an id
+        # whose fullest (id, skew) bin holds threshcount hits or fewer leaves
+        # it on the first check without a row: keep_local_maxes() never raises
+        # a bin. Finding those ids with one sort over all hits gives the same
+        # rows in the same order, in a fraction of the time (WZS shards with
+        # 20,000 tracks spent about 6 s per shard in this loop).
+        # Re-apply this if audfprint is ever updated from upstream.
+        span = int(alltimes.max()) + 1
+        idskew, idskew_counts = np.unique(allids.astype(np.int64) * span + alltimes,
+                                          return_counts=True)
+        ids_with_a_bin_over_threshold = set(
+            (idskew[idskew_counts > self.threshcount] // span).tolist())
         nresults = 0
         min_time = 0
         max_time = 0
         for urank, (id, rawcount) in enumerate(zip(ids, rawcounts)):
             # Make sure id is an int64 before shifting it up.
             id = int(id)
+            if id not in ids_with_a_bin_over_threshold:
+                continue
             # Select the subrange of bincounts corresponding to this id
             bincounts = np.bincount(alltimes[allids == id])
             still_looking = True
