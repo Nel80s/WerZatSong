@@ -179,6 +179,10 @@ Each worker keeps one Python matcher running for the whole search instead of sta
 - **`VERIFY_CHECKSUMS=always`** in `.env` → Without isal, the checksum of a database file is verified the first time it is read and about once a month after that, as long as its size and date stay the same (the list is kept in `cache/pklz-verified.json`). This setting verifies every file on every search instead. With isal every file is verified on every search anyway
 - **`DISK_PRIORITY=normal`** in `.env` → Windows only: reads the database at normal disk priority even when the search is started by a scheduled task. Task Scheduler otherwise gives everything it starts low disk priority, which slows a search down a lot
 
+When `--audfprint` runs together with `--musicbrainz`, `--audiotag` or `--shazam`, those modes search while Audfprint reads the database instead of before it. They wait on web services (a MusicBrainz search is about five minutes of paced AcoustID lookups per file) and Audfprint waits on the disk, so a run takes about as long as the longer of the two instead of both added up. What is posted, and in which order, is unchanged: the other modes post as they go, and the Audfprint reports wait until they have finished. If a run is stopped, `--resume` names the files the other modes had not searched yet.
+
+- **`SEQUENTIAL_MODES=on`** in `.env` → runs the other modes first and Audfprint after them, one after the other, as before
+
 ### 2. Audiotag
 
 Uses the Audiotag API to search for matches in its online database:
@@ -229,4 +233,4 @@ Results logs are stored in the **`logs`** folder after the execution finishes. T
 
 ## Development Credits
 
-Developed by **Nel** with contributions from **Numerophobe**, **AzureBlast** and **Mystic65**
+Developed by **Nel** with contributions from **Numerophobe**, **AzureBlast**, **Mystic65** and **EierkuchenHD**

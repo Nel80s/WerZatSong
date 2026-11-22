@@ -14,7 +14,7 @@ const MAX_DURATION_ALLOWED = 600 // seconds
 const MIN_DURATION_ALLOWED = 30 // seconds
 const MAX_EXTENSION_ALLOWED = 25 // seconds
 const MIN_EXTENSION_ALLOWED = 1 // seconds
-const WEBHOOK_MESSAGE = 'Welcome to __WerZatSong__!\nDeveloped by **Nel** with contributions from **Numerophobe**, **AzureBlast** and **Mystic65**'
+const WEBHOOK_MESSAGE = 'Welcome to __WerZatSong__!\nDeveloped by **Nel** with contributions from **Numerophobe**, **AzureBlast**, **Mystic65** and **EierkuchenHD**'
 const WEBHOOK_REGEX = /^https:\/\/discord\.com\/api\/webhooks\/\d+\/[a-zA-Z0-9_.-]+$/
 
 async function requestValue(request){
