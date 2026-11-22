@@ -3,7 +3,7 @@
 match_server.py - LOCAL ADDITION to audfprint (not upstream).
 
 `audfprint.py match`, kept running. scripts/audfprint.js used to start a new
-Python for every database file of a search - about 43,000 of them, each one
+Python for every database file of a search - tens of thousands of them, each one
 spending roughly 2.8 s importing numpy, scipy and joblib before it matched
 anything. Now each worker thread starts this once and hands it one database
 file at a time.
@@ -40,22 +40,22 @@ LOCAL MODIFICATION (2026-11-11, read ahead): a request may also add
 that file into memory while this one is inflated and matched, so the next
 load does not have to wait for the disk: reading and computing overlap
 instead of taking turns. That matters most where a read is slow to be served
-(a busy or slow drive, or the low I/O priority a scheduled task gets on
-Windows: there 24 matchers taking turns got about 180 MiB/s out of a drive
-that gives 24 waiting readers 290). The bytes are the file's own, so nothing
-about a table changes. Files over PREFETCH_MAX_BYTES are left to the normal
-reader, which never holds a whole file: with one read ahead a matcher holds
-the table, the file it is inflating and the next file, and that has to stay
-within the memory werzatsong.js counts per thread (MATCHER_PEAK_BYTES).
+(a busy or slow drive, or a search reading at low I/O priority on Windows:
+such requests are served one after the other). The bytes are the file's own,
+so nothing about a table changes. Files over PREFETCH_MAX_BYTES are left to
+the normal reader, which never holds a whole file: with one read ahead a
+matcher holds the table, the file it is inflating and the next file, and
+that has to stay within the memory werzatsong.js counts per thread
+(MATCHER_PEAK_BYTES).
 
 LOCAL MODIFICATION (2026-11-12, disk priority): DISK_PRIORITY=normal in .env
-makes this process read at normal I/O priority. It only matters on Windows
-where a search is started by a scheduled task: a task runs at priority 7
-unless it says otherwise, and everything below it then reads at low I/O
-priority, where requests are served one after the other. All matchers
-together then get what a single reader gets from the drive (measured here:
-335 to 400 MiB/s, against 813 for 16 readers at normal priority). The CPU
-priority is left as it is. Without the setting nothing changes.
+makes this process read at normal I/O priority. It only matters on Windows,
+when the search was started at low I/O priority (a process inherits its I/O
+priority from the program that starts it). At low I/O priority requests are
+served one after the other, so all matchers together get what a single reader
+gets from the drive (in one test 335 to 400 MiB/s, against 813 for 16 readers
+at normal priority). The CPU priority is left as it is. Without the setting
+nothing changes.
 
 Re-apply this if audfprint is ever updated from upstream.
 """

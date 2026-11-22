@@ -8,11 +8,11 @@
  * a shard deleted mid-run - is reported and skipped; it never takes the run
  * down with it. Previously a failed match rejected inside the worker, the
  * rejection went unhandled, the worker died with the rest of its chunk, and the
- * primary waited forever for shards that would never report. On 2026-09-23 four
- * corrupt shards hung two whole runs that way.
+ * primary waited forever for shards that would never report. A single corrupt
+ * shard could hang a whole run that way.
  *
- * Kept deliberately unchanged, because anything that watches a run from outside
- * (a front end, a progress script) can infer progress from them:
+ * As in the original version of this script (only the ~2, ~3 names below are
+ * new):
  *   - scheduling is round-robin: shard i goes to worker i % threads, in order;
  *   - a shard being matched has a temp/<shard>.match.txt, created before its
  *     match starts and deleted once its results are folded in (the 2nd, 3rd ...
@@ -35,9 +35,9 @@
  * with the file: if the file still has that size and time, the matcher skips
  * the CRC32 (libs/audfprint/hash_table.py, _read_pklz; the deflate data and
  * every length are still checked). A file is verified again when it changes
- * and anyway every CHECKSUM_REVERIFY_DAYS days, give or take half, so not all
- * on the same night. VERIFY_CHECKSUMS=always (environment or .env) verifies
- * every file on every search, as before.
+ * and anyway every CHECKSUM_REVERIFY_DAYS days, give or take half, so that not
+ * all files come due at once. VERIFY_CHECKSUMS=always (environment or .env)
+ * verifies every file on every search, as before.
  *
  * Read ahead (2026-11-11): with each shard a worker
  * tells its matcher which shard it will ask for next, and the matcher reads
@@ -81,12 +81,12 @@ const VERIFY_ALWAYS = String(process.env.VERIFY_CHECKSUMS || '').trim().toLowerC
 
 // The temp file each shard's matches are collected in. A file name can turn up
 // in several database folders - copies, or different files that happen to share
-// a name (168 such names on 2026-11-05) - and when two of them shared one temp
-// file and were matched at the same time, the first to finish was folded in and
-// deleted while the other was still writing to it: the rest of that shard's
-// matches were lost without a word. So the first shard with a name keeps
-// "<name>.match.txt", the one a progress watcher looks for, and the n-th gets
-// "<name>~n.match.txt". Counted without case, as NTFS compares names.
+// a name - and when two of them shared one temp file and were matched at the
+// same time, the first to finish was folded in and deleted while the other was
+// still writing to it: the rest of that shard's matches were lost without a
+// word. So the first shard with a name keeps "<name>.match.txt" as before, and
+// the n-th gets "<name>~n.match.txt". Counted without case, as NTFS compares
+// names.
 function assignMatchFiles(fingerprints){
     const seen = new Map()
     return fingerprints.map(fingerprint => {
@@ -112,11 +112,12 @@ function splitCommand(command){
  * Each worker keeps one Python matcher running and hands it one shard at a
  * time. It used to start `audfprint.py match` for every shard, and Python's
  * start-up and imports (numpy, scipy, joblib) took about 2.8 s each time -
- * some 34 CPU-hours over the ~43,000 shards of a full search. The matcher runs
- * the command line's own code, so what it writes for a shard is what
- * `audfprint.py match` printed for it. If it dies, only the shard it was on is
- * lost and the next shard starts a new one; every SHARDS_PER_MATCHER shards it
- * is replaced anyway, so nothing it holds can build up over a long run.
+ * hours of CPU time over the tens of thousands of shards of a big search.
+ * The matcher runs the command line's own code, so what it writes for a
+ * shard is what `audfprint.py match` printed for it. If it dies, only the
+ * shard it was on is lost and the next shard starts a new one; every
+ * SHARDS_PER_MATCHER shards it is replaced anyway, so nothing it holds can
+ * build up over a long run.
  * ------------------------------------------------------------------------ */
 
 const MATCH_SERVER = join(dirname(consts.AUDFPRINT_PROGRAM), 'match_server.py')
@@ -186,8 +187,9 @@ function startMatcher(){
 // not the worker and everything still queued behind it.
 function matchFingerprint({ fingerprint, matchFile, trusted }, next){
     return new Promise(resolve => {
-        // Created before the matcher starts on it, so a progress watcher sees the
-        // shard as in flight. The matcher appends the shard's output to it.
+        // Created before the matcher starts on it, so a temp/ that cannot be
+        // written fails this shard here. The matcher appends the shard's
+        // output to it.
         try { closeSync(openSync(matchFile, 'a')) }
         catch(error){ return resolve({ ok: false, error: `cannot write match output: ${error.message}` }) }
         if(matcher && matcher.served >= SHARDS_PER_MATCHER){

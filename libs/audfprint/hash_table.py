@@ -37,12 +37,12 @@ HT_VERSION = 20170724
 # LOCAL MODIFICATION (not upstream audfprint).
 #
 # A .pklz is a gzipped pickle, and unpickling can run arbitrary code: a crafted
-# database file would execute as whoever runs the match - a service account,
-# when a scheduled task starts the scan. Database files are downloaded and passed
-# around, so only the few classes a genuine hash table is made of are let
-# through. Surveyed on 2026-09-23 across all 44 database folders here: every file
-# references exactly HashTable, numpy.dtype and numpy's _frombuffer; the other
-# numpy entries are the array/scalar reconstructors older numpy versions wrote.
+# database file would execute as whoever runs the match. Database files are
+# downloaded and passed around, so only the few classes a genuine hash table is
+# made of are let through. A table saved by current Python and numpy
+# references exactly HashTable, numpy.dtype and numpy's _frombuffer; the
+# other numpy entries are the array/scalar reconstructors older versions
+# wrote.
 #
 # Re-apply this if audfprint is ever updated from upstream.
 _PKLZ_ALLOWED_GLOBALS = {
@@ -95,7 +95,7 @@ def _load_pklz_pickle(file_object, buffers=None):
 
 # LOCAL MODIFICATION (not upstream audfprint).
 #
-# A search loads every one of the ~41,700 database files, and loading one was
+# A search loads every database file, and loading one was
 # most of the time spent on it. gzip.open() has no readinto(), so pickle got
 # the ~420 MB table array as one bytes object and copied it into its own
 # buffer: every load held the table twice for a moment, in every worker. It
@@ -117,7 +117,7 @@ def _load_pklz_pickle(file_object, buffers=None):
 # another member, the table is kept and one warning line goes to stderr.
 # load() sums with numpy.
 #
-# Measured on 2026-11-05 on six tables of 0.4 to 358 MB: identical tables and
+# Measured on six tables of 0.4 to 358 MB: identical tables and
 # output, 0.5 to 0.9 s less per load, peak memory down from about twice the
 # table to the table plus a few MB. Reading the whole file and inflating it in
 # one go (gzip.decompress() or zlib) was no faster and held the compressed
@@ -131,9 +131,9 @@ _GZIP_INFLATE_SIZE = 1 << 18
 # buffer, so the disk is read 8 MiB at a time while zlib is still fed the
 # 64 KiB pieces above from memory.
 #
-# Scans run below normal priority (the scheduled tasks' default priority 7),
-# and Windows then gives every disk request low I/O priority, which costs
-# about 14 ms per request however small it is. 64 KiB requests came to about
+# When a scan reads at low I/O priority (on Windows a process inherits it
+# from the program that started it), every disk request took about 14 ms in
+# the measurements below, however small it was. 64 KiB requests came to about
 # 3.6 MiB/s per worker, so reading one ~30 MB file took longer than inflating
 # it, and adding workers made scans no faster. Measured under a running scan,
 # at low I/O priority: 64 KiB reads 3.6 MiB/s, 1 MiB 30, 4 MiB 87, 8 MiB 115;
@@ -146,10 +146,10 @@ _DISK_READ_SIZE = 8 << 20
 
 # LOCAL MODIFICATION (2026-11-11, load speed), not upstream audfprint.
 #
-# After the 8 MiB disk buffer a load was all CPU: on a 1.7 GHz Xeon about
-# 1.35 s to inflate the 404 MiB table, 0.6 s for zlib to CRC32 those 404 MiB
-# again, and 0.15 s of page faults for 404 MiB of fresh memory, for every one
-# of the ~41,700 files of every search. Two things a caller can now ask for;
+# After the 8 MiB disk buffer a load was all CPU: about 1.35 s to inflate
+# the 404 MiB table, 0.6 s for zlib to CRC32 those 404 MiB again, and 0.15 s
+# of page faults for 404 MiB of fresh memory, for every database file of
+# every search. Two things a caller can now ask for;
 # without them everything loads exactly as before.
 #
 # 1. A file whose checksum this machine has verified before, and which has
@@ -176,8 +176,8 @@ _DISK_READ_SIZE = 8 << 20
 #    loaded this way is overwritten by the next load: never switch this on
 #    where two tables are held at once (merge, the command line).
 #
-# Measured on 2026-11-11: same tables, same query results. Re-apply this if
-# audfprint is ever updated from upstream.
+# Tested: the tables and query results are the same as without them.
+# Re-apply this if audfprint is ever updated from upstream.
 last_load = {}   # size, mtime_ns and verified (bool) of the file load_pkl() read last
 _table_memory = {'on': False, 'buffer': None}
 _DIVERT_MIN_SIZE = 16 << 20
@@ -210,7 +210,7 @@ _PICKLE_LARGE = {0x42: 4, 0x58: 4, 0x8e: 8, 0x8d: 8}
 # What isal hands over is therefore only ever data whose checksum and length
 # are the ones the file was written with.
 #
-# Measured on 2026-11-12 on six real tables: same bytes; inflate + CRC32 in
+# Measured on six real tables: same bytes; inflate + CRC32 in
 # 0.35 to 0.58 s against 1.7 to 2.1 s with zlib. Re-apply this if audfprint
 # is ever updated from upstream.
 _fast = {'checked': False, 'module': None}
@@ -719,10 +719,9 @@ class HashTable(object):
             file to a table again stores every one of its (track, time)
             entries again, and the default match counting counted each copy:
             a table holding a track 11 times turned 3 chance hashes into
-            "33 aligned", which is what made
-            numerophobe-pklzs/.../LEGACY/aornightdrive-A-Cl.-01092024-old.pklz
-            report PROBABLE matches for every query on 2026-11-04. Tables
-            without repeated entries give exactly the same hits as before.
+            "33 aligned", enough to make such a table report PROBABLE
+            matches for nearly every query. Tables without repeated entries
+            give exactly the same hits as before.
             Vectorised over the query hashes instead of a Python loop.
 
             LOCAL MODIFICATION (2026-11-11, scan speed): only the slots
