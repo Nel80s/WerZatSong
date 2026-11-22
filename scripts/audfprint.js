@@ -23,9 +23,11 @@
  * Output: temp/_results.json (all matches) and temp/_failed_pklzs.txt (one
  * "<path>\t<reason>" line per shard that could not be matched), plus
  * temp/_checkpoint.json: the shards finished so far and their results, written
- * between shards about once a minute, so werzatsong.js --resume can carry on
- * after a crash or cancel (--resume-from <checkpoint> starts from one; the
- * shard list then holds only the shards still to do).
+ * between shards about once a minute (less often once it is large), so
+ * werzatsong.js --resume can carry on after a crash or cancel (--resume-from
+ * <checkpoint> starts from one; the shard list then holds only the shards still
+ * to do). Both JSON files are written a few thousand entries per line (see
+ * utils/bigjson.js), _results.json only when the search starts and ends.
  *
  * Load speed (2026-11-11): checksums are verified once.
  * Every .pklz is a gzip file, and verifying its CRC32 costs about a quarter
@@ -56,6 +58,7 @@ const { basename, dirname, join } = require('node:path')
 const readline = require('node:readline')
 const { hideBin } = require('yargs/helpers')
 const yargs = require('yargs/yargs')
+const { readObjectLines, writeObjectLines } = require('../utils/bigjson')
 const consts = require('../utils/consts')
 
 dotenv.config()
@@ -65,7 +68,7 @@ const { argv } = yargs(hideBin(process.argv))
 const FAILED_FILE = join(consts.TEMP_FOLDER, '_failed_pklzs.txt')
 const CHECKPOINT_FILE = join(consts.TEMP_FOLDER, '_checkpoint.json')
 const CHECKPOINT_VERSION = 1
-const RESULTS_FLUSH_MS = 60_000 // keep _results.json and the checkpoint roughly current without rewriting them per shard
+const RESULTS_FLUSH_MS = 60_000 // keep the checkpoint roughly current without rewriting it per shard
 const STDERR_TAIL_BYTES = 4096
 // Between a minute and a day. Node's timers hold at most 2^31 - 1 ms (24.8
 // days) and fire at once when given more, which failed every shard on the spot.
@@ -287,8 +290,13 @@ function sleepSync(ms){
 // a file another program has open - Defender scanning it, an editor, a backup
 // tool - so the rename is retried for about two seconds before it gives up.
 function writeAtomically(path, text){
+    replaceAtomically(path, partial => writeFileSync(partial, text, 'utf-8'))
+}
+
+// The same for a file that write(partialPath) writes.
+function replaceAtomically(path, write){
     const partial = `${path}.partial`
-    writeFileSync(partial, text, 'utf-8')
+    write(partial)
     for(let attempt = 1; ; attempt++){
         try {
             renameSync(partial, path)
@@ -308,10 +316,13 @@ function writeAtomically(path, text){
 // is already in the results and searching them again would count it twice.
 function readCheckpoint(path){
     try {
-        const checkpoint = JSON.parse(readFileSync(path, 'utf-8'))
-        if(checkpoint.version !== CHECKPOINT_VERSION || !Array.isArray(checkpoint.done) || typeof checkpoint.results !== 'object')
+        // Read entry by entry (see utils/bigjson.js): the results it holds can
+        // be bigger than the longest string Node can hold.
+        const results = {}
+        const checkpoint = readObjectLines(path, (key, value) => { results[key] = value }, { entriesKey: 'results' })
+        if(checkpoint.version !== CHECKPOINT_VERSION || !Array.isArray(checkpoint.done))
             throw new Error('not a checkpoint this version writes')
-        return checkpoint
+        return { ...checkpoint, results }
     }
     catch(error){
         console.error(`Cannot resume from ${path}: ${error.message}`)
@@ -377,15 +388,27 @@ function runPrimary(){
     let exiting = false
     let dirty = false
 
-    writeFileSync(consts.RESULTS_FILE, JSON.stringify(results), 'utf-8')
+    writeObjectLines(consts.RESULTS_FILE, results)
     writeFileSync(FAILED_FILE, '', 'utf-8')
 
     // Only ever called between two folds (from the fold chain or after it), so
     // the checkpoint's shard list and results always describe the same shards.
+    // Both are written line by line (utils/bigjson.js): as one string, the
+    // results of a large search outgrow the longest string Node can hold (about
+    // 512 MB) and every save failed with "Invalid string length".
+    const saveResults = () => replaceAtomically(consts.RESULTS_FILE, partial => writeObjectLines(partial, results))
+    const saveCheckpoint = () => replaceAtomically(CHECKPOINT_FILE, partial =>
+        writeObjectLines(partial, results, { head: { version: CHECKPOINT_VERSION, done }, entriesKey: 'results' }))
+    // While the search runs only the checkpoint is kept current: --resume
+    // reads it, and _results.json is written when the search ends. A save
+    // takes longer the more results there are, so the next one waits at least
+    // ten times as long as the last one took.
+    let nextSave = 0
     const writeResults = () => {
-        writeAtomically(consts.RESULTS_FILE, JSON.stringify(results))
-        writeAtomically(CHECKPOINT_FILE, JSON.stringify({ version: CHECKPOINT_VERSION, done, results }))
+        const started = Date.now()
+        saveCheckpoint()
         dirty = false
+        nextSave = Date.now() + 10 * (Date.now() - started)
     }
     // A save that fails costs that save, never the search: the next one tries
     // again, and the end of the run tries harder. (An exception here used to
@@ -419,7 +442,7 @@ function runPrimary(){
         return foldChain
     }
     const flushTimer = setInterval(() => {
-        foldChain = foldChain.then(() => { if(dirty) saveProgress() })
+        foldChain = foldChain.then(() => { if(dirty && Date.now() >= nextSave) saveProgress() })
         saveVerified()
     }, RESULTS_FLUSH_MS)
 
@@ -433,7 +456,7 @@ function runPrimary(){
         let saved = false
         for(let attempt = 1; attempt <= 5 && !saved; attempt++){
             try {
-                writeAtomically(consts.RESULTS_FILE, JSON.stringify(results))
+                saveResults()
                 saved = true
             }
             catch(error){
@@ -445,7 +468,7 @@ function runPrimary(){
         // The final checkpoint only matters if werzatsong.js dies before it has
         // reported, and an older one still resumes correctly: worth a try, not
         // worth failing the run over.
-        try { writeAtomically(CHECKPOINT_FILE, JSON.stringify({ version: CHECKPOINT_VERSION, done, results })) }
+        try { saveCheckpoint() }
         catch(error){ console.error(`Could not update the checkpoint: ${error.message}`) }
         saveVerified()
         if(failures.length > 0){

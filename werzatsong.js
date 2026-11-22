@@ -88,6 +88,7 @@ const { promisify } = require('node:util')
 const { hideBin } = require('yargs/helpers')
 const yargs = require('yargs/yargs')
 const { searchWithAudiotag } = require('./scripts/audiotag')
+const { readObjectHead, readObjectLines } = require('./utils/bigjson')
 const consts = require('./utils/consts')
 const { generateUnique, sleep, trimExtension } = require('./utils/helpers')
 const runLock = require('./utils/lock')
@@ -635,6 +636,31 @@ async function generateFiles(env, trimSeconds, shifts, modes, audioFiles, precom
  * Results logging
  * ------------------------------------------------------------------------ */
 
+// The audfprint log of one query, written in pieces: with every candidate of
+// a large search it can outgrow the longest string Node can hold (about
+// 512 MB). The bytes are those of HUMAN_LOG_LEGEND + buildMatchReport(matches).
+function createMatchLog(basename, matches){
+    if(!existsSync(RESULTS_FOLDER))
+        mkdirSync(RESULTS_FOLDER)
+    const resultsFile = join(RESULTS_FOLDER, `${basename}.${Mode.AUDFPRINT}.txt`)
+    const fd = openSync(resultsFile, 'w')
+    try {
+        let chunk = HUMAN_LOG_LEGEND
+        for(let index = 0; index < matches.length; index++){
+            chunk += `${index > 0 ? '\n' : ''}${formatMatchEntry(matches[index])}`
+            if(chunk.length >= 1 << 20){
+                writeFileSync(fd, chunk)
+                chunk = ''
+            }
+        }
+        writeFileSync(fd, chunk)
+    }
+    finally {
+        closeSync(fd)
+    }
+    return resultsFile
+}
+
 function createResultsLog(basename, mode, content){
     if(!existsSync(RESULTS_FOLDER))
         mkdirSync(RESULTS_FOLDER)
@@ -925,17 +951,10 @@ async function createAudfprintLogs(env, queryFiles = [], unsearched = { failed: 
         warning(`No ${Mode.AUDFPRINT} results file was produced - nothing to analyze`)
         return []
     }
-    let results
-    try {
-        results = JSON.parse(readFileSync(consts.RESULTS_FILE, 'utf-8'))
-    }
-    catch(error){
-        warning(`Could not parse the ${Mode.AUDFPRINT} results file: ${error.message}`)
-        return []
-    }
-
+    // Read entry by entry: the results of a large search can be bigger than the
+    // longest string Node can hold (about 512 MB; see utils/bigjson.js).
     const matchesByInput = {}
-    for(const [resultKey, match] of Object.entries(results)){
+    const addMatch = (resultKey, match) => {
         const inputBasename = trimExtension(basename(match.input_file))
         const aligned = Number(match.common_hashes) || 0
         const rawCommon = Number(match.total_hashes) || 0
@@ -963,6 +982,11 @@ async function createAudfprintLogs(env, queryFiles = [], unsearched = { failed: 
             confidence: classifyMatch(aligned, consistencyPct)
         })
     }
+    try { readObjectLines(consts.RESULTS_FILE, addMatch) }
+    catch(error){
+        warning(`Could not parse the ${Mode.AUDFPRINT} results file: ${error.message}`)
+        return []
+    }
 
     const summary = []
     for(const [inputBasename, matches] of Object.entries(matchesByInput)){
@@ -972,7 +996,7 @@ async function createAudfprintLogs(env, queryFiles = [], unsearched = { failed: 
 
         // Human-readable log. Same legend + same entry formatting as the
         // webhook below - both go through formatMatchEntry().
-        createResultsLog(inputBasename, Mode.AUDFPRINT, `${HUMAN_LOG_LEGEND}${buildMatchReport(matches)}`)
+        createMatchLog(inputBasename, matches)
 
         summary.push({ query: inputBasename, best: pickSummaryMatch(matches) })
 
@@ -1335,6 +1359,13 @@ function hashFileSync(path){
     return crypto.createHash('sha1').update(readFileSync(path)).digest('hex')
 }
 
+// The checkpoint's head - its version and the database files it finished -
+// without its results, which can be far bigger than a string can hold.
+function readCheckpointHead(){
+    try { return readObjectHead(CHECKPOINT_FILE, { entriesKey: 'results' }) }
+    catch { return null }
+}
+
 function readJsonFile(path){
     try { return JSON.parse(readFileSync(path, 'utf-8')) }
     catch { return null }
@@ -1352,7 +1383,7 @@ function noteUnfinishedSearch(){
     const state = readJsonFile(RUN_STATE_FILE)
     if(!state || state.finished)
         return
-    const done = readJsonFile(CHECKPOINT_FILE)?.done?.length || 0
+    const done = readCheckpointHead()?.done?.length || 0
     info(`The previous search (started ${state.startedAt}) stopped after ${done} of ${state.total} database files; this run starts over (werzatsong.js --resume would have continued it)`)
 }
 
@@ -1418,7 +1449,7 @@ async function resumeSearch(env){
     let all
     try { all = readFileSync(ALL_PKLZS_FILE, 'utf-8').split('\n').map(line => line.trim()).filter(Boolean) }
     catch { exit('Cannot resume: the stopped search\'s list of database files (temp/_pklzs_all.txt) is gone') }
-    const checkpoint = existsSync(CHECKPOINT_FILE) ? readJsonFile(CHECKPOINT_FILE) : null
+    const checkpoint = existsSync(CHECKPOINT_FILE) ? readCheckpointHead() : null
     if(existsSync(CHECKPOINT_FILE) && !checkpoint)
         exit('Cannot resume: temp/_checkpoint.json is unreadable')
     const done = new Set((checkpoint?.done || []).map(entry => entry.fingerprint))
