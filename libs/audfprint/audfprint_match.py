@@ -380,8 +380,8 @@ class Matcher(object):
         # whose fullest (id, skew) bin holds threshcount hits or fewer leaves
         # it on the first check without a row: keep_local_maxes() never raises
         # a bin. Finding those ids with one sort over all hits gives the same
-        # rows in the same order, in a fraction of the time (WZS shards with
-        # 20,000 tracks spent about 6 s per shard in this loop).
+        # rows in the same order, in a fraction of the time (on a table of
+        # many short tracks this loop took several seconds per shard).
         # Re-apply this if audfprint is ever updated from upstream.
         span = int(alltimes.max()) + 1
         idskew, idskew_counts = np.unique(allids.astype(np.int64) * span + alltimes,

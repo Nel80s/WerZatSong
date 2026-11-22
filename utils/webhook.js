@@ -36,8 +36,8 @@ let failedPostsInARow = 0
 // Discord finds mentions in the raw text, code blocks included, so a file
 // name such as "@everyone - live.mp3" in a match report would ping the whole
 // server. A zero-width space right after the "@" breaks the mention and looks
-// the same. Nothing else is touched: the fences, the column layout and the
-// fullwidth characters yt-dlp puts in file names must arrive as written.
+// the same. Nothing else is touched: the fences, the column layout and every
+// other character of a file name must arrive as written.
 // Running it twice changes nothing, because the inserted character already
 // stands between the "@" and the rest of the mention.
 const MENTION_PATTERN = /@(?=everyone|here)|<@(?=[!&]?\d+>)/gi

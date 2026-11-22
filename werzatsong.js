@@ -18,11 +18,10 @@
  *    lostwave workflow: same samples vs. an ever-growing database) skips
  *    ffmpeg + audfprint precompute entirely.
  *  - Query-side --shifts is now configurable (default 4, the old hardcoded
- *    value). Shifts multiply query hashes and part of the match cost. For a
- *    while the default was 2; on 2026-11-05, 24 lostwave clips against the
- *    WatZatSong folder got 30-140% more aligned hashes at 4 than at 2 for
- *    their real matches (two PROBABLE became STRONG), with no extra noise, so
- *    4 is back. --shifts 2 remains the quick option.
+ *    value). Shifts multiply query hashes and part of the match cost. In a
+ *    comparison on 24 lostwave clips, real matches got 30-140% more aligned
+ *    hashes at 4 than at 2 (two PROBABLE became STRONG) with no extra noise,
+ *    so 4 stays the default. --shifts 2 remains the quick option.
  *  - New "--merge" utility mode consolidates a database subfolder's many
  *    .pklz files into a few large shards via audfprint's newmerge. audfprint
  *    reloads (gunzip + unpickle) every database file on every match run, so
@@ -58,13 +57,11 @@
  *      cons%    = aligned / raw  (random chance stays under ~1%)
  *    The old "match_score" was exactly cons%, but the code treated it as a
  *    generic percentage. Thresholds are named, documented and produce a human
- *    label (very strong / strong / probable / borderline); since 2026-11-06
- *    they are an eight-step ladder of aligned hashes and consistency, and
- *    nothing under 2% consistency is posted (see the thresholds).
+ *    label (very strong / strong / probable / borderline); they are an
+ *    eight-step ladder of aligned hashes and consistency, and nothing under
+ *    2% consistency is posted (see the thresholds).
  *  - Each input gets ONE result artifact: a human-readable .txt log with a
  *    legend and the same entry formatting used for the Discord webhook.
- *    (An earlier revision also wrote a machine-readable .ndjson alongside
- *    it; that was removed since nothing in this workflow consumes it.)
  *  - A final ranked summary per query is printed at the end of the run,
  *    plus per-phase timing.
  *
@@ -72,12 +69,12 @@
  *  audiotag, shazam) search while the audfprint matching stage runs, instead
  *  of before it. They wait on web services (a musicbrainz search is about five
  *  minutes of paced AcoustID lookups per file), the matching stage on the disk
- *  and the processors, so neither slows the other: a run of 9 files
- *  spent 47 minutes on them before its 34-minute matching stage began. What
- *  is posted, and in which order, is unchanged: the other modes post as they
- *  go, and the audfprint reports wait until they have finished. See
- *  searchOtherModes / runMatchingStage. SEQUENTIAL_MODES=on in .env runs them
- *  one after the other again.
+ *  and the processors, so neither slows the other: a run takes about as long
+ *  as the longer of the two instead of both added up. What is posted, and in
+ *  which order, is unchanged: the other modes post as they go, and the
+ *  audfprint reports wait until they have finished. See searchOtherModes /
+ *  runMatchingStage. SEQUENTIAL_MODES=on in .env runs them one after the
+ *  other again.
  */
 
 const dotenv = require('dotenv')
@@ -91,6 +88,7 @@ const { promisify } = require('node:util')
 const { hideBin } = require('yargs/helpers')
 const yargs = require('yargs/yargs')
 const { searchWithAudiotag } = require('./scripts/audiotag')
+const { readObjectHead, readObjectLines } = require('./utils/bigjson')
 const consts = require('./utils/consts')
 const { generateUnique, sleep, trimExtension } = require('./utils/helpers')
 const runLock = require('./utils/lock')
@@ -109,10 +107,10 @@ require('node:events').setMaxListeners(100) // increase listeners limit
  * hashes usually indicates a true match, while random chance keeps the
  * aligned/raw consistency fraction under ~1%.
  *
- * Since 2026-11-06 the decision is a ladder: each step
- * pairs a number of aligned hashes ("amount") with the aligned/raw percentage
- * ("score") it needs, fewer hashes needing a higher share. The steps map onto
- * the existing labels, so result files and Discord posts look as before:
+ * The decision is a ladder: each step pairs a number of aligned hashes
+ * ("amount") with the aligned/raw percentage ("score") it needs, fewer hashes
+ * needing a higher share. The steps map onto the existing labels, so result
+ * files and Discord posts look as before:
  *   EXTREME                    -> very strong
  *   HIGHEST, HIGHER            -> strong
  *   HIGH, MEDIUM, LOW, LOWER,
@@ -122,12 +120,9 @@ require('node:events').setMaxListeners(100) // increase listeners limit
  * for a manual look).
  *
  * Previous rule set, for comparison: 70+ aligned; 40 @ 2%; 25 @ 7%; 15 @ 30%.
- * On the 26 queries of 2026-11-05/06 the ladder would have posted 1,380
- * entries instead of 303 - with query --shifts 4 a chance match gets 15-20
- * "aligned" hashes out of only 3-4 distinct ones (Nachts vs bandcamp).
- *
- * A tool that labels results the same way may read these constants by name:
- * keep the names, or change both.
+ * On a set of 26 test queries the ladder would have posted 1,380 entries
+ * instead of 303 - with query --shifts 4 a chance match gets 15-20
+ * "aligned" hashes out of only 3-4 distinct ones.
  */
 const AUDFPRINT_LOWEST_HASHES = 13      // amount
 const AUDFPRINT_LOWEST_SCORE = 10       // percentage
@@ -159,13 +154,13 @@ const AUDFPRINT_LADDER = [
     { hashes: AUDFPRINT_LOWEST_HASHES, score: AUDFPRINT_LOWEST_SCORE, label: 'probable' },
 ]
 
-const BUSY_EXIT_CODE = 75                  // another run holds the install's lock (EX_TEMPFAIL); launchers may retry later
+const BUSY_EXIT_CODE = 75                  // another run holds the install's lock (EX_TEMPFAIL); try again later
 const DEFAULT_QUERY_SHIFTS = 4             // query-side --shifts (the old hardcoded value; 2 for a quicker search; see header)
 const FAILED_PKLZS_FILE = join(consts.TEMP_FOLDER, '_failed_pklzs.txt') // written by scripts/audfprint.js
 const DEFAULT_MERGE_SHARD_FILES = 64       // source pklz files merged per output shard in --merge mode
 const DEFAULT_MERGE_MAX_DROPPED = 3        // % of hashes a merged shard may lose to full buckets before it is discarded
 const MAX_FILES_PER_SEARCH = 30            // amount
-const MAX_PREP_CONCURRENCY = 16             // upper bound for parallel ffmpeg/precompute workers STANDARD: 8
+const MAX_PREP_CONCURRENCY = 16            // upper bound for parallel ffmpeg/precompute workers
 const MUSICBRAINZ_MIN_SCORE = 60           // percentage
 const PROGRAM_VERSION = 'v1.0.0'
 const RESULTS_FOLDER = join(consts.LOGS_FOLDER, generateUnique())
@@ -174,10 +169,10 @@ const WEBHOOK_SLEEP = 2                    // seconds between Discord posts (coa
 const DEFAULT_SHARD_TIMEOUT = 15           // minutes one database file may take before its matcher is stopped
 // Memory one matching thread needs at its peak, while it loads a database file:
 // every table inflates to ~424 MB, and libs/audfprint/hash_table.py inflates it
-// in place (about 460 MB at the peak, measured 2026-11-06; the older loader
-// briefly held two copies, ~850 MB). The rest is room for the matching itself.
+// in place (about 460 MB at the peak; the older loader briefly held two
+// copies, ~850 MB). The rest is room for the matching itself.
 const MATCHER_PEAK_BYTES = 0.6 * 2 ** 30
-const MEMORY_HEADROOM_BYTES = 4 * 2 ** 30  // left for Windows and everything else running here
+const MEMORY_HEADROOM_BYTES = 4 * 2 ** 30  // left for the operating system and other programs
 const DISK_WARN_BYTES = 2 * 2 ** 30        // free space below this on the drive of temp/, logs/ or the cache gets a warning
 // Written while the matching stage runs, so --resume can continue it (see resumeSearch).
 const RUN_STATE_FILE = join(consts.TEMP_FOLDER, '_run.json')
@@ -220,7 +215,7 @@ const { argv } = yargs(hideBin(process.argv))
 .option('threads', { type: 'number', description: 'Set the number of threads to use for Audfprint processing' })
 .option('shifts', { type: 'number', description: `Query-side audfprint --shifts (1-8). Higher = more robust but slower; default ${DEFAULT_QUERY_SHIFTS}, 2 for a quicker search` })
 .option('shard-timeout', { type: 'number', description: `Minutes one database file may take before its matcher is stopped and the file is reported as failed (default ${DEFAULT_SHARD_TIMEOUT})` })
-.option('resume', { type: 'boolean', description: 'Continue an audfprint search that stopped part-way (crash, cancel, watchdog): only the database files it had not finished are searched, then the results are reported as usual' })
+.option('resume', { type: 'boolean', description: 'Continue an audfprint search that stopped part-way (crash, cancel): only the database files it had not finished are searched, then the results are reported as usual' })
 // Database maintenance
 .option('merge', { type: 'string', description: 'Merge the PKLZ files in "database/<folder>" into a few large shards (major speedup), then exit. Pass "" for the database root' })
 .option('shard-files', { type: 'number', description: `In --merge mode, how many source PKLZ files go into each merged shard (default ${DEFAULT_MERGE_SHARD_FILES})` })
@@ -301,10 +296,9 @@ function findFileRecursively(dir, filename){
 }
 
 // The worker emits some fields pre-decorated for display: rank_position
-// arrives as "#0" and match_time as "-3.53s". Those strings are useless in
-// the machine-readable NDJSON output, and re-adding "#"/"s" on top of them
-// produces "##0" / "-3.53ss". Strip to a plain number on parse; the display
-// layer re-adds the decoration.
+// arrives as "#0" and match_time as "-3.53s". Re-adding "#"/"s" on top of
+// them produces "##0" / "-3.53ss", so they are stripped to a plain number on
+// parse; the display layer re-adds the decoration.
 function parseNumericField(value){
     if(typeof value === 'number')
         return value
@@ -357,8 +351,8 @@ function setupFolders({ keepSearchState = false } = {}){
         : [consts.PRECOMPUTED_FOLDER, consts.PROCESSED_FOLDER, consts.TEMP_FOLDER]
     // Emptied, not deleted and re-created. Windows refuses to remove a directory
     // while anything else has it open - a shell or Explorer window sitting in it,
-    // a file watcher - and that EPERM used to end the run before it had started
-    // (two runs in a row, on 2026-09-22 and 2026-09-23).
+    // an editor or a virus scanner - and that EPERM used to end the run before it
+    // had started.
     for(const folder of foldersToClean){
         if(!existsSync(folder)){
             mkdirSync(folder)
@@ -642,6 +636,31 @@ async function generateFiles(env, trimSeconds, shifts, modes, audioFiles, precom
  * Results logging
  * ------------------------------------------------------------------------ */
 
+// The audfprint log of one query, written in pieces: with every candidate of
+// a large search it can outgrow the longest string Node can hold (about
+// 512 MB). The bytes are those of HUMAN_LOG_LEGEND + buildMatchReport(matches).
+function createMatchLog(basename, matches){
+    if(!existsSync(RESULTS_FOLDER))
+        mkdirSync(RESULTS_FOLDER)
+    const resultsFile = join(RESULTS_FOLDER, `${basename}.${Mode.AUDFPRINT}.txt`)
+    const fd = openSync(resultsFile, 'w')
+    try {
+        let chunk = HUMAN_LOG_LEGEND
+        for(let index = 0; index < matches.length; index++){
+            chunk += `${index > 0 ? '\n' : ''}${formatMatchEntry(matches[index])}`
+            if(chunk.length >= 1 << 20){
+                writeFileSync(fd, chunk)
+                chunk = ''
+            }
+        }
+        writeFileSync(fd, chunk)
+    }
+    finally {
+        closeSync(fd)
+    }
+    return resultsFile
+}
+
 function createResultsLog(basename, mode, content){
     if(!existsSync(RESULTS_FOLDER))
         mkdirSync(RESULTS_FOLDER)
@@ -757,7 +776,7 @@ function audfprint(env, threads, { timeoutSeconds, resumeFrom = null } = {}){
 }
 
 /* ---------------------------------------------------------------------------
- * audfprint results: scoring, human + machine logs, summary
+ * audfprint results: scoring, result logs, summary
  * ------------------------------------------------------------------------ */
 
 // Human-readable confidence label from the ladder above. 'very strong',
@@ -932,17 +951,10 @@ async function createAudfprintLogs(env, queryFiles = [], unsearched = { failed: 
         warning(`No ${Mode.AUDFPRINT} results file was produced - nothing to analyze`)
         return []
     }
-    let results
-    try {
-        results = JSON.parse(readFileSync(consts.RESULTS_FILE, 'utf-8'))
-    }
-    catch(error){
-        warning(`Could not parse the ${Mode.AUDFPRINT} results file: ${error.message}`)
-        return []
-    }
-
+    // Read entry by entry: the results of a large search can be bigger than the
+    // longest string Node can hold (about 512 MB; see utils/bigjson.js).
     const matchesByInput = {}
-    for(const [resultKey, match] of Object.entries(results)){
+    const addMatch = (resultKey, match) => {
         const inputBasename = trimExtension(basename(match.input_file))
         const aligned = Number(match.common_hashes) || 0
         const rawCommon = Number(match.total_hashes) || 0
@@ -970,6 +982,11 @@ async function createAudfprintLogs(env, queryFiles = [], unsearched = { failed: 
             confidence: classifyMatch(aligned, consistencyPct)
         })
     }
+    try { readObjectLines(consts.RESULTS_FILE, addMatch) }
+    catch(error){
+        warning(`Could not parse the ${Mode.AUDFPRINT} results file: ${error.message}`)
+        return []
+    }
 
     const summary = []
     for(const [inputBasename, matches] of Object.entries(matchesByInput)){
@@ -979,7 +996,7 @@ async function createAudfprintLogs(env, queryFiles = [], unsearched = { failed: 
 
         // Human-readable log. Same legend + same entry formatting as the
         // webhook below - both go through formatMatchEntry().
-        createResultsLog(inputBasename, Mode.AUDFPRINT, `${HUMAN_LOG_LEGEND}${buildMatchReport(matches)}`)
+        createMatchLog(inputBasename, matches)
 
         summary.push({ query: inputBasename, best: pickSummaryMatch(matches) })
 
@@ -1184,8 +1201,8 @@ async function musicbrainz(env, file, extension, duration){
     const fileBasename = basename(file)
     try {
         // "--name=value", not "--name value": yargs takes a value that starts
-        // with "-" for an option of its own, and YouTube ids can start with one
-        // ("-m828BrXeSc - ...mp3" arrived as --file true and crashed the script).
+        // with "-" for an option of its own, so an input file whose name starts
+        // with one ("-abc.mp3") would arrive as --file true and crash the script.
         await runTool(env.NODE_COMMAND, [consts.FPCALC_SCRIPT, `--file=${file}`, `--extension=${extension}`])
         const { stdout } = await runTool(env.NODE_COMMAND, [consts.MUSICBRAINZ_SCRIPT, `--file=${basename(file)}`, `--duration=${duration}`])
         const outputLogs = stdout.split('\n').filter(line => line.trim() !== '').map(line => JSON.parse(line))
@@ -1331,15 +1348,22 @@ function shardTimeoutSeconds(){
  * with a hash of it, how many database files) and temp/_pklzs_all.txt the full
  * list of database files, while scripts/audfprint.js keeps temp/_checkpoint.json
  * with every file it has finished and the results so far. When the run is
- * stopped - a crash, a cancel, a watchdog - `--resume` searches only
- * the files not finished yet and then reports everything as a normal run
- * would. A normal start wipes temp/, so it always starts over.
+ * stopped - a crash, a cancel - `--resume` searches only the files not
+ * finished yet and then reports everything as a normal run would. A normal
+ * start wipes temp/, so it always starts over.
  * ------------------------------------------------------------------------ */
 
 const RUN_STATE_VERSION = 1
 
 function hashFileSync(path){
     return crypto.createHash('sha1').update(readFileSync(path)).digest('hex')
+}
+
+// The checkpoint's head - its version and the database files it finished -
+// without its results, which can be far bigger than a string can hold.
+function readCheckpointHead(){
+    try { return readObjectHead(CHECKPOINT_FILE, { entriesKey: 'results' }) }
+    catch { return null }
 }
 
 function readJsonFile(path){
@@ -1359,7 +1383,7 @@ function noteUnfinishedSearch(){
     const state = readJsonFile(RUN_STATE_FILE)
     if(!state || state.finished)
         return
-    const done = readJsonFile(CHECKPOINT_FILE)?.done?.length || 0
+    const done = readCheckpointHead()?.done?.length || 0
     info(`The previous search (started ${state.startedAt}) stopped after ${done} of ${state.total} database files; this run starts over (werzatsong.js --resume would have continued it)`)
 }
 
@@ -1425,7 +1449,7 @@ async function resumeSearch(env){
     let all
     try { all = readFileSync(ALL_PKLZS_FILE, 'utf-8').split('\n').map(line => line.trim()).filter(Boolean) }
     catch { exit('Cannot resume: the stopped search\'s list of database files (temp/_pklzs_all.txt) is gone') }
-    const checkpoint = existsSync(CHECKPOINT_FILE) ? readJsonFile(CHECKPOINT_FILE) : null
+    const checkpoint = existsSync(CHECKPOINT_FILE) ? readCheckpointHead() : null
     if(existsSync(CHECKPOINT_FILE) && !checkpoint)
         exit('Cannot resume: temp/_checkpoint.json is unreadable')
     const done = new Set((checkpoint?.done || []).map(entry => entry.fingerprint))
@@ -1478,7 +1502,7 @@ async function init(){
     }
     process.on('exit', lock.release)
     if(lock.inherited)
-        info('Running under the run lock held by the launcher')
+        info('Running under the run lock held by the program that started this run')
     if(!resuming && merge === undefined)
         noteUnfinishedSearch()
     setupFolders({ keepSearchState: resuming })
@@ -1525,12 +1549,11 @@ async function init(){
     let pklzCount = 0
     if(modes.includes(Mode.AUDFPRINT)){
         threads = Math.min(consts.MAX_CORES_ALLOWED, (!isNaN(threads) && threads > 0) ? threads : availableParallelism())
-		// threads = 40
         pklzCount = setupAudfprint(folder)
-        // This used to recommend --merge unconditionally. Most PKLZ files here
-        // already hold 7-10 million hashes and drop ~1% of them to full buckets
-        // on their own; merging 64 of them into one table of the same size would
-        // throw most hashes away. --merge now refuses shards that lose too much.
+        // --merge is only suggested, not urged: many PKLZ files already hold
+        // 7-10 million hashes and drop ~1% of them to full buckets on their
+        // own; merging 64 of them into one table of the same size would throw
+        // most hashes away, and --merge refuses shards that lose too much.
         if(pklzCount > 50)
             info(`Searching ${pklzCount} separate PKLZ files; each is loaded once per run. --merge can combine small ones (it skips shards that would drop more than ${DEFAULT_MERGE_MAX_DROPPED}% of their hashes)`)
     }

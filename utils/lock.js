@@ -3,18 +3,17 @@
  *
  * Every run wipes temp/, precomputed/ and processed/ on start and works out of
  * the shared input/ folder, so two overlapping runs destroy each other's work.
- * Several things can launch runs on one machine - a front end, a scheduled
- * task, people by hand - so the rule has to live in the one place they all pass
- * through: werzatsong.js itself, plus this file for launchers that need to hold
- * the lock for longer than the run (because they download into input/ first,
- * for example).
+ * Two runs can overlap - started from two terminals, say - so the rule has to
+ * live in the one place every run passes through: werzatsong.js itself, plus
+ * this file for a program that has to hold the lock for longer than the run.
  *
  * The lock is <install>/werzatsong.lock, created with O_EXCL:
  *   { pid, token, owner, startedAt, command }
- * A launcher that already holds it passes its token to the run it starts via
- * WERZATSONG_LOCK_TOKEN, and that run proceeds under the parent's lock.
+ * A program that already holds the lock can start a run under it by passing
+ * its token in WERZATSONG_LOCK_TOKEN; that run then proceeds under the
+ * parent's lock.
  * A lock whose pid is gone (or now belongs to some unrelated program) is stale
- * and is taken over. werzatsong-daily.ps1 implements the same protocol.
+ * and is taken over.
  */
 
 const { execFileSync } = require('node:child_process')
@@ -85,7 +84,7 @@ function describe(lock){
  * Returns one of
  *   { acquired: true, token, inherited, release() }
  *   { acquired: false, holder }        - someone else is running
- * `owner` is a short label ("werzatsong.js", "my-launcher", ...).
+ * `owner` is a short label ("werzatsong.js", "my-script", ...).
  */
 function acquire(owner, { token: inheritToken = process.env[TOKEN_ENV], command = process.argv.join(' ') } = {}){
     if(inheritToken){
