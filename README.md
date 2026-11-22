@@ -233,4 +233,4 @@ Results logs are stored in the **`logs`** folder after the execution finishes. T
 
 ## Development Credits
 
-Developed by **Nel** with contributions from **Numerophobe**, **AzureBlast** and **Mystic65**
+Developed by **Nel** with contributions from **Numerophobe**, **AzureBlast**, **Mystic65** and **EierkuchenHD**

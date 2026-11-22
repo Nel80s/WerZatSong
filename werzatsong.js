@@ -1,7 +1,7 @@
 /*
  * WerZatSong — main orchestrator (performance & observability revision)
  * Based on https://github.com/Nel80s/WerZatSong by Nel, with contributions
- * from Numerophobe, AzureBlast and Mystic65.
+ * from Numerophobe, AzureBlast, Mystic65 and EierkuchenHD.
  *
  * What changed in this revision and why (short version):
  *
@@ -1468,7 +1468,7 @@ function reportWhereResultsAre(){
 async function init(){
     let { duration, extension, folder, merge, shifts, threads, trim } = argv
     const resuming = Boolean(argv.resume) && merge === undefined
-    info(`Welcome to WerZatSong ${PROGRAM_VERSION}! - Developed by Nel with contributions from Numerophobe, AzureBlast and Mystic65`)
+    info(`Welcome to WerZatSong ${PROGRAM_VERSION}! - Developed by Nel with contributions from Numerophobe, AzureBlast, Mystic65 and EierkuchenHD`)
     // Before anything touches temp/, precomputed/ or processed/: setupFolders()
     // wipes them, which destroys a run already in progress.
     const lock = runLock.acquire(merge !== undefined ? 'werzatsong.js --merge' : (resuming ? 'werzatsong.js --resume' : 'werzatsong.js'))
