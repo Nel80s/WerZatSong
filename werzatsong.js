@@ -67,6 +67,17 @@
  *    it; that was removed since nothing in this workflow consumes it.)
  *  - A final ranked summary per query is printed at the end of the run,
  *    plus per-phase timing.
+ *
+ *  The other modes (musicbrainz,
+ *  audiotag, shazam) search while the audfprint matching stage runs, instead
+ *  of before it. They wait on web services (a musicbrainz search is about five
+ *  minutes of paced AcoustID lookups per file), the matching stage on the disk
+ *  and the processors, so neither slows the other: a run of 9 files
+ *  spent 47 minutes on them before its 34-minute matching stage began. What
+ *  is posted, and in which order, is unchanged: the other modes post as they
+ *  go, and the audfprint reports wait until they have finished. See
+ *  searchOtherModes / runMatchingStage. SEQUENTIAL_MODES=on in .env runs them
+ *  one after the other again.
  */
 
 const dotenv = require('dotenv')
@@ -172,6 +183,12 @@ const DISK_WARN_BYTES = 2 * 2 ** 30        // free space below this on the drive
 const RUN_STATE_FILE = join(consts.TEMP_FOLDER, '_run.json')
 const CHECKPOINT_FILE = join(consts.TEMP_FOLDER, '_checkpoint.json') // written by scripts/audfprint.js
 const ALL_PKLZS_FILE = join(consts.TEMP_FOLDER, '_pklzs_all.txt')
+// Which input files the other modes had not searched yet (see searchOtherModes).
+const OTHER_MODES_FILE = join(consts.TEMP_FOLDER, '_other_modes.json')
+// scripts/fpcalc.js keeps "<input name>.json" in temp/ while musicbrainz mode
+// searches a file. Run side by side with the matching stage, an input with one
+// of these names would overwrite that stage's own files.
+const RESERVED_TEMP_NAMES = new Set(['_results', '_checkpoint', '_run', '_other_modes'])
 
 // Persistent query-fingerprint cache. Lives NEXT TO the input folder (i.e.
 // "<project>/cache/afpt") and is intentionally NOT wiped by setupFolders().
@@ -704,15 +721,33 @@ function audfprint(env, threads, { timeoutSeconds, resumeFrom = null } = {}){
                 stderrTail.shift()
             warning(`[worker stderr] ${text}`)
         })
+        // The other modes may still be
+        // searching while this runs (see runMatchingStage). So a failure that
+        // used to exit() here is handed to the caller as an error marked
+        // "fatal", which lets them finish first; and if the process ends for
+        // any other reason, the worker is stopped with it instead of matching
+        // on with nobody reading its results.
+        const stopWorker = () => {
+            try { audfprintProcess.kill() }
+            catch { /* already gone */ }
+        }
+        process.on('exit', stopWorker)
+        const fatal = message => Object.assign(new Error(message), { fatal: true })
+        let launchFailed = false
         audfprintProcess.on('error', error => {
-            exit(`Failed to launch the ${Mode.AUDFPRINT} worker: ${error.message}`)
+            launchFailed = true
+            process.removeListener('exit', stopWorker)
+            reject(fatal(`Failed to launch the ${Mode.AUDFPRINT} worker: ${error.message}`))
         })
         audfprintProcess.on('close', code => {
+            process.removeListener('exit', stopWorker)
+            if(launchFailed)
+                return
             if(code === 0)
                 return resolve()
             const tail = stderrTail.join('\n')
             if(tail.includes('MemoryError'))
-                exit('The process ran out of memory. Please try reducing the number of threads (or merge/shard your database with --merge) and run it again')
+                return reject(fatal('The process ran out of memory. Please try reducing the number of threads (or merge/shard your database with --merge) and run it again'))
             warning(`Mode ${Mode.AUDFPRINT} exited with error code: ${code}`)
             if(tail !== '')
                 warning(`Last worker stderr output:\n${tail}`)
@@ -1331,10 +1366,31 @@ function noteUnfinishedSearch(){
 // The matching stage and its reports; shared by normal runs and --resume.
 // total: database files of the whole search; searching: how many this attempt
 // searches (fewer when resuming).
-async function runMatchingStage(env, { threads, queries, total, searching, resumeFrom = null }){
+// otherModes: { label, finished, done } when the other modes are searching at
+// the same time (see searchOtherModes in init), else null.
+async function runMatchingStage(env, { threads, queries, total, searching, resumeFrom = null, otherModes = null }){
     const matchStartedAt = Date.now()
-    await audfprint(env, threads, { timeoutSeconds: shardTimeoutSeconds(), resumeFrom })
+    try {
+        await audfprint(env, threads, { timeoutSeconds: shardTimeoutSeconds(), resumeFrom })
+    }
+    catch(error){
+        // When the matching stage came second, the other modes had finished
+        // and posted before it could fail. They still do.
+        if(otherModes && !otherModes.finished){
+            warning(`The ${Mode.AUDFPRINT} search failed; the ${otherModes.label} search finishes first`)
+            await otherModes.done
+        }
+        if(error.fatal)
+            exit(error.message)
+        throw error
+    }
     info(`Search completed with ${Mode.AUDFPRINT} mode in ${formatSeconds(Date.now() - matchStartedAt)} (${(searching / Math.max(1, (Date.now() - matchStartedAt) / 1000)).toFixed(2)} pklz/sec), now analyzing results... Please wait and do not close the program`)
+    // The other modes' posts come before the audfprint reports, as they did
+    // when the other modes ran first.
+    if(otherModes && !otherModes.finished){
+        info(`Waiting for the ${otherModes.label} search to finish; the ${Mode.AUDFPRINT} results are reported after it`)
+        await otherModes.done
+    }
     // Unsearched database files are reported first: a "no match found"
     // below means less when part of the database was never looked at.
     const failed = await reportFailedShards(env, total)
@@ -1355,7 +1411,12 @@ async function resumeSearch(env){
     for(const name of ['folder', 'shifts', 'trim'].filter(option => argv[option] !== undefined))
         warning(`--${name} is ignored with --resume: the stopped search's own setting is used`)
     if(['audiotag', 'musicbrainz', 'shazam'].some(mode => argv[mode]))
-        info('Only the audfprint search is resumed; the other modes had finished before it started')
+        info('Only the audfprint search is resumed; the other modes are not run again')
+    // The other modes search while the matching stage runs, so a run stopped
+    // part-way can have left some files unsearched by them.
+    const unsearched = readJsonFile(OTHER_MODES_FILE)
+    if(Array.isArray(unsearched?.pending) && unsearched.pending.length > 0)
+        warning(`When the search stopped, ${unsearched.modes} had not searched ${unsearched.pending.length} file(s): ${unsearched.pending.join(', ')}. --resume does not search them with those modes; start a new run for that`)
     // The very fingerprints the stopped search used, unchanged.
     for(const query of state.queries){
         if(!existsSync(query.path) || hashFileSync(query.path) !== query.sha1)
@@ -1493,6 +1554,7 @@ async function init(){
     if(audioFiles.length > 0)
         info(`Input preparation took ${formatSeconds(Date.now() - prepStartedAt)}`)
 
+    let otherModes = null
     if(modes.some(mode => mode !== Mode.AUDFPRINT)){
         const mp3Modes = modes.filter(mode => mode !== Mode.AUDFPRINT)
         info(`Searching ${mp3s.length} MP3 files with mode${mp3Modes.length > 1 ? 's' : ''}: ${mp3Modes.join(', ')}`)
@@ -1503,21 +1565,49 @@ async function init(){
             info(`Mode ${Mode.MUSICBRAINZ} will be searching for tracks with duration ranges between ${minDuration} and ${maxDuration} seconds`)
             info(`Mode ${Mode.MUSICBRAINZ} will be extending tracks between 0 and ${extension} seconds during the searches`)
         }
-        for(const mp3 of mp3s){
-            const basenameMp3 = basename(mp3)
-            if(modes.includes(Mode.MUSICBRAINZ)){
-                info(`Searching "${basenameMp3}" with ${Mode.MUSICBRAINZ} mode`)
-                await musicbrainz(env, mp3, extension, duration)
+        // The other modes run alongside the matching stage: see the top of the file.
+        // sideBySide: this loop runs while the matching stage does, and
+        // temp/_other_modes.json says which files it has not searched yet, for
+        // --resume to mention if the run is stopped.
+        const searchOtherModes = async sideBySide => {
+            const pending = mp3s.map(mp3 => basename(mp3))
+            const notePending = () => {
+                if(!sideBySide)
+                    return
+                try { writeFileSync(OTHER_MODES_FILE, JSON.stringify({ modes: mp3Modes.join(', '), pending }), 'utf-8') }
+                catch { /* only --resume's note depends on it */ }
             }
-            if(modes.includes(Mode.AUDIOTAG)){
-                info(`Searching "${basenameMp3}" with ${Mode.AUDIOTAG} mode`)
-                await audiotag(env, mp3)
-            }
-            if(modes.includes(Mode.SHAZAM)){
-                info(`Searching "${basenameMp3}" with ${Mode.SHAZAM} mode`)
-                await shazam(env, mp3)
+            notePending()
+            for(const mp3 of mp3s){
+                const basenameMp3 = basename(mp3)
+                if(modes.includes(Mode.MUSICBRAINZ)){
+                    info(`Searching "${basenameMp3}" with ${Mode.MUSICBRAINZ} mode`)
+                    await musicbrainz(env, mp3, extension, duration)
+                }
+                if(modes.includes(Mode.AUDIOTAG)){
+                    info(`Searching "${basenameMp3}" with ${Mode.AUDIOTAG} mode`)
+                    await audiotag(env, mp3)
+                }
+                if(modes.includes(Mode.SHAZAM)){
+                    info(`Searching "${basenameMp3}" with ${Mode.SHAZAM} mode`)
+                    await shazam(env, mp3)
+                }
+                pending.shift()
+                notePending()
             }
         }
+        const sequential = ['on', '1', 'yes', 'true'].includes(String(env.SEQUENTIAL_MODES || '').trim().toLowerCase())
+        const reservedName = mp3s.some(mp3 => RESERVED_TEMP_NAMES.has(trimExtension(basename(mp3)).toLowerCase()))
+        if(modes.includes(Mode.AUDFPRINT) && afpts.length > 0 && mp3s.length > 0 && !sequential && !reservedName){
+            info(`The ${mp3Modes.join(', ')} search runs while ${Mode.AUDFPRINT} searches the database; the ${Mode.AUDFPRINT} results are reported after both have finished`)
+            otherModes = { label: mp3Modes.join(', '), finished: false, done: null }
+            // Never rejects: the matching stage awaits it at its own pace.
+            otherModes.done = searchOtherModes(true)
+                .catch(error => warning(`The ${otherModes.label} search stopped unexpectedly: ${error?.stack || error}`))
+                .then(() => { otherModes.finished = true })
+        }
+        else
+            await searchOtherModes(false)
     }
 
     if(modes.includes(Mode.AUDFPRINT)){
@@ -1541,7 +1631,7 @@ async function init(){
             queries: afpts.map(path => ({ path, sha1: hashFileSync(path) })),
             finished: false
         })
-        await runMatchingStage(env, { threads, queries: afpts, total: pklzCount, searching: pklzCount })
+        await runMatchingStage(env, { threads, queries: afpts, total: pklzCount, searching: pklzCount, otherModes })
     }
 
     reportWhereResultsAre()
