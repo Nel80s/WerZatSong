@@ -1,0 +1,97 @@
+name: Bug report
+description: WerZatSong stopped with an error or did something wrong
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem. Each answer below is needed to find the cause, so please fill in all of them.
+  - type: textarea
+    id: error
+    attributes:
+      label: What is the error?
+      description: The exact error message and the lines just before it. Paste the text from the console rather than a screenshot where you can.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: full-output
+    attributes:
+      label: Full console output
+      description: The last lines often do not show the cause. If you can, save everything the run printed to a .txt file and drag it into this box.
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+      description: Only needed when nothing crashed but the result looks wrong, for example a match that is missing or a post that never came.
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How can it be reproduced?
+      description: The full command you ran with every option (such as `--threads`, `--shifts` or `--folder`), how many files were in `input/`, and how large the database is (number of `.pklz` files and GB). Does it happen every time?
+      placeholder: |
+        node werzatsong.js --audfprint --threads 8
+        3 files in input/, database of 5,500 .pklz files (180 GB)
+        Happens every time / happened once
+    validations:
+      required: true
+  - type: input
+    id: queries
+    attributes:
+      label: How many audio files were searched at once?
+      description: Count every file in `input/`, including any extra copies you made of a song (for example at another speed or pitch). This number decides how many results a search collects.
+      placeholder: "3"
+    validations:
+      required: true
+  - type: dropdown
+    id: resumed
+    attributes:
+      label: Was it a resumed search (`--resume`)?
+      options:
+        - "No"
+        - "Yes"
+        - "Not sure"
+  - type: textarea
+    id: when
+    attributes:
+      label: When did it occur?
+      description: The date and time, how long after the start of the run, and the last progress line before the error, for example "(2238/5507) Analysis completed for ...".
+    validations:
+      required: true
+  - type: dropdown
+    id: after-update
+    attributes:
+      label: Did it start after an update?
+      options:
+        - "Yes"
+        - "No"
+        - "Not sure"
+    validations:
+      required: true
+  - type: textarea
+    id: update
+    attributes:
+      label: If so, which update, and which files did you replace?
+      description: The pull request, commit or date of the update, and every file you replaced. An update often changes several files that only work together, so say if you kept an older copy of any of them.
+  - type: textarea
+    id: config
+    attributes:
+      label: Did you change any configuration files? If so, which ones?
+      description: For example `.env`, `utils/consts.js` or any other file you edited, and what you changed in it. Leave out API keys and webhook URLs.
+    validations:
+      required: true
+  - type: textarea
+    id: hardware
+    attributes:
+      label: What are your hardware specifications?
+      description: The CPU (model and number of cores), the amount of RAM, the kind of drive the database is on (HDD, SATA SSD or NVMe) and the operating system. The Node.js and Python versions (`node --version`, `python --version`) help too.
+      value: |
+        CPU:
+        RAM:
+        Database drive:
+        Operating system:
+        Node.js version:
+        Python version:
+    validations:
+      required: true
