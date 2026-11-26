@@ -1,236 +1,352 @@
+<div align="center">
+
 # WerZatSong
 
-WerZatSong is a tool that helps you figure out song names from audio files. It provides different search modes to find matches: **Audfprint, Audiotag, MusicBrainz (AcoustID) and Shazam**. You can run a single mode or combine multiple modes. If multiple modes are selected, they will execute in the following order of priority:
+**Find out the name of a song when all you have is a recording of it.**
 
-1. **MusicBrainz** (AcoustID)
-2. **Audiotag**
-3. **Shazam**
-4. **Audfprint**
+[![Stars](https://img.shields.io/github/stars/Nel80s/WerZatSong?style=flat-square&logo=github&label=stars)](https://github.com/Nel80s/WerZatSong/stargazers)
+[![Forks](https://img.shields.io/github/forks/Nel80s/WerZatSong?style=flat-square&logo=github&label=forks)](https://github.com/Nel80s/WerZatSong/network/members)
+[![Last update](https://img.shields.io/github/last-commit/Nel80s/WerZatSong?style=flat-square&label=last%20update)](https://github.com/Nel80s/WerZatSong/commits/main)
+[![Commits](https://img.shields.io/github/commit-activity/t/Nel80s/WerZatSong?style=flat-square&label=commits)](https://github.com/Nel80s/WerZatSong/commits/main)
+![Code size](https://img.shields.io/github/languages/code-size/Nel80s/WerZatSong?style=flat-square)
+[![Open issues](https://img.shields.io/github/issues/Nel80s/WerZatSong?style=flat-square&label=open%20issues)](https://github.com/Nel80s/WerZatSong/issues)
+[![License](https://img.shields.io/github/license/Nel80s/WerZatSong?style=flat-square)](LICENSE)
 
-This document will guide you step-by-step to install, set up, and use WerZatSong in a simple way.
+![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D6?style=flat-square&logo=windows&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js-20%2B-339933?style=flat-square&logo=nodedotjs&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.13%2B-3776AB?style=flat-square&logo=python&logoColor=white)
+![FFmpeg](https://img.shields.io/badge/FFmpeg-required-007808?style=flat-square&logo=ffmpeg&logoColor=white)
+![Results in Discord](https://img.shields.io/badge/results-Discord-5865F2?style=flat-square&logo=discord&logoColor=white)
 
-## Requirements and Installation
+<br>
 
-Before you start, make sure these programs are installed on your computer:
+<img src="images/preview.png" alt="WerZatSong searching three songs in Command Prompt" width="900">
 
-### System Requirements
+</div>
 
-- [**Node.js**](https://nodejs.org) (v20.0 or higher) → Add to PATH and check in your terminal with `node -v` and `npm -v`
-- [**Python**](https://www.python.org/downloads) (v3.13 or higher) → Add to PATH and check in your terminal with `python --version` and `pip --version`
-- [**FFmpeg**](https://www.gyan.dev/ffmpeg/builds) → Add to PATH and check in your terminal with `ffmpeg -version`
+---
 
-  ![Programs](images/programs.png)
+Put your recordings into a folder, type one command, and WerZatSong searches for each song in up to four ways. What it finds is posted to a Discord channel of your choice and saved as text files on your computer.
 
-### Program Requirements
+| Search | How it searches | Needs |
+|---|---|---|
+| **Audfprint** | Compares your songs with a large collection of song fingerprints, on your own computer | The fingerprint database |
+| **Audiotag** | Online, at audiotag.info | A free Audiotag key |
+| **MusicBrainz** | Online, in the AcoustID / MusicBrainz database | A free AcoustID key |
+| **Shazam** | Online, with Shazam | Nothing extra |
 
-To use WerZatSong effectively, you'll also need the following:
+You can use one search or several at once. Audfprint runs entirely on your computer; the other three send your recordings, or fingerprints made from them, to those online services. The setup is done once and is written for Windows.
 
-- **Discord Webhook URL** → For receiving match notifications (see *"How to Get a Discord Webhook URL"* below)
-- **Audiotag API key** → Required for Audiotag search mode (see *"How to Get an Audiotag API Key"* below)
-- **AcoustID API key** → Required for MusicBrainz search mode (see *"How to Get an AcoustID API Key"* below)
-- **Database for Audfprint** → Required for Audfprint search mode (see *"Download the Audfprint Database"* below)
-  - **Storage Alert** → The database requires a significant amount of disk space. Using an **SSD** is recommended for better performance
+---
 
-#### How to Get a Discord Webhook URL
+## Contents
 
-1. Open Discord and create your own server (if you don't have one)
-2. In the **#general** text channel, click the gear icon (**Edit Channel**)
-3. Go to **Integrations** → **Webhooks**
-4. Click **Create Webhook**, then open it and select **Copy Webhook URL**
-5. Save it for now, you'll need it soon
+- [Setup](#setup)
+- [Searching for songs](#searching-for-songs)
+- [Understanding the results](#understanding-the-results)
+- [All options](#all-options)
+- [The settings file (.env)](#the-settings-file-env)
+- [Updating WerZatSong](#updating-werzatsong)
+- [When something goes wrong](#when-something-goes-wrong)
+- [Credits](#credits)
 
-#### How to Get an Audiotag API Key
+---
 
-1. Go to the [Audiotag](https://audiotag.info) website
-2. Create a new account or log in if you already have one
-3. Go to the [**User Section**](https://user.audiotag.info) and click the **API keys** tab
-4. Click **Create new API key** button, copy the key and save it for now
+## Setup
 
-#### How to Get an AcoustID API Key
+### 1. Install Node.js, Python and FFmpeg
 
-1. Go to the [AcoustID](https://acoustid.org) website
-2. Create a new account or log in if you already have one
-3. In [**My Applications**](https://acoustid.org/my-applications), click the **Register a new application** button
-4. Fill in the fields with basic info (it can be random) and click **Register**
-5. Copy the application's **API key** that appears and save it for now
+WerZatSong needs three free programs:
 
-#### Download the Audfprint Database
+| Program | What it's for |
+|---|---|
+| [**Node.js**](https://nodejs.org) 20 or newer (the **LTS** version) | Runs WerZatSong itself |
+| [**Python**](https://www.python.org/downloads) 3.13 or newer | Runs the fingerprinting and the Shazam search |
+| [**FFmpeg**](https://www.gyan.dev/ffmpeg/builds) | Reads and cuts audio files |
 
-- Download the **database folders** that contain the **PKLZ files** created by the community from [**here**](https://wzs.cosine.club)
+The easiest way is to open **Command Prompt** (press the Windows key, type `cmd`, press Enter) and type these one at a time:
 
-### Program Installation
+```
+winget install OpenJS.NodeJS.LTS
+winget install Python.Python.3.13
+winget install Gyan.FFmpeg
+```
 
-1. **Download WerZatSong**:
-   - Go to the repository, click **<> Code** → **Download ZIP**
-   - Unzip the file to a folder of your choice
-   - Now you should see a folder called `WerZatSong-main`
+<details>
+<summary><b>Installing them by hand instead</b></summary>
 
-2. **Navigate to the folder**:
-   - Navigate to the unzipped folder location using the `cd` command in your terminal:
+<br>
 
-     ```bash
-     cd WerZatSong-main
-     ```
+Download each program from the links above. In the Python installer, tick **"Add python.exe to PATH"** on the first screen. FFmpeg comes as a ZIP file without an installer: unzip it somewhere permanent (for example `C:\ffmpeg`) and add its `bin` folder to PATH:
 
-3. **Run this command to install Node.js dependencies**:
+1. Press the Windows key, type **environment variables** and open **Edit the system environment variables**.
+2. Click **Environment Variables...**, select **Path** in the upper list and click **Edit...**.
+3. Click **New**, type the path of the `bin` folder (for example `C:\ffmpeg\bin`) and click **OK** in every window.
 
-    ```bash
-    npm install
-    ```
+</details>
 
-4. **Run these commands one by one to install Python dependencies**:
+Then open a **new** Command Prompt window and type these one at a time. Each should print a version number:
 
-    ```bash
-    pip install -r requirements.txt
-    pip install audioop-lts
-    pip install shazamio
-    ```
+```
+node -v
+npm -v
+python --version
+pip --version
+ffmpeg -version
+```
 
-    - **Note**: If you encounter an error during the installation of these dependencies, it may be due to missing dependencies. Here are two common issues and their solutions:
-        - **Rust Error** (see screenshot below):
-            - Install Rust from [the official website](https://www.rust-lang.org/tools/install)
-            - After installation, verify it works by running `rustc --version` in your terminal
-            - Once Rust is installed, retry the `pip install` commands above
-            ![Rust Error](images/rust-error.png)
-        - **C++ Build Tools Error** (see screenshot below):
-            - Install Build Tools for Visual Studio 2017 or later from [the official website](https://visualstudio.microsoft.com/thank-you-downloading-visual-studio/?sku=BuildTools&rel=16)
-            - During installation, select the *"Desktop development with C++ workload"* (C++ tools)
-            - After installation, restart your machine
-            - Retry the `pip install` commands above
-            ![Shazam Error](images/shazam-error.png)
+![The version checks for Node.js, Python and FFmpeg](images/programs.png)
 
-Done! Now you're ready to set up WerZatSong.
+If one says *"is not recognized as an internal or external command"*, Windows can't find that program (it isn't on its "PATH"). Install it again and open a new Command Prompt window.
 
-## Initial Setup
+### 2. Download and install WerZatSong
 
-### Set Up WerZatSong for the First Time
+1. On this page, click the green **<> Code** button → **Download ZIP**, and unzip it to a folder of your choice, for example `C:\WerZatSong-main`. *(If you know Git, `git clone https://github.com/Nel80s/WerZatSong.git` makes [updating](#updating-werzatsong) easier.)*
+2. Open the folder in File Explorer, click in the address bar at the top, type `cmd` and press Enter. A Command Prompt window opens in that folder. All commands from here on are typed there.
+3. Type these one at a time:
 
-In your terminal run the following command:
-```bash
+   ```
+   npm install
+   pip install -r requirements.txt
+   pip install audioop-lts
+   pip install shazamio
+   ```
+
+<details>
+<summary><b>One of the <code>pip install</code> commands failed?</b></summary>
+
+<br>
+
+It is usually one of these two:
+
+**An error that mentions Rust.** Install Rust from [rust-lang.org](https://www.rust-lang.org/tools/install), check it with `rustc --version` in a new Command Prompt window, and run the `pip install` commands again.
+
+![The error when Rust is missing](images/rust-error.png)
+
+**An error that mentions Microsoft Visual C++ or build tools.** Install the [Build Tools for Visual Studio](https://visualstudio.microsoft.com/visual-cpp-build-tools/) and tick **"Desktop development with C++"** in the installer. Restart the computer and run the `pip install` commands again.
+
+![The error when the C++ build tools are missing](images/shazam-error.png)
+
+</details>
+
+### 3. Get a Discord webhook and your keys
+
+**A Discord webhook** is a private address that lets WerZatSong post in one channel of your server:
+
+1. In Discord, create your own server if you don't have one (the **+** at the bottom of the server list).
+2. Next to a text channel, click the gear icon (**Edit Channel**) → **Integrations** → **Webhooks** → **New Webhook**.
+3. Click the new webhook, then **Copy Webhook URL**.
+
+**An Audiotag key** (only for the Audiotag search): create a free account at [audiotag.info](https://audiotag.info), open the [user section](https://user.audiotag.info) → **API keys** → **Create new API key**, and copy the key.
+
+**An AcoustID key** (only for the MusicBrainz search): create a free account at [acoustid.org](https://acoustid.org), open [My Applications](https://acoustid.org/my-applications) → **Register a new application**, fill in the fields with anything, click **Register** and copy the **API key**.
+
+### 4. First start
+
+Type:
+
+```
 node werzatsong.js --audiotag --musicbrainz
 ```
 
-On the **first run**, this will:
+WerZatSong creates the folders it needs (`input`, `database`, `logs` and a few working folders) and its [settings file](#the-settings-file-env), and asks you to paste the webhook URL and the two keys (right-click pastes in Command Prompt). It posts a welcome message to your Discord channel to check the webhook, and then stops because the `input` folder is still empty. That is expected.
 
-- Generate all necessary folders automatically
-- Prompt you to **enter your Discord Webhook URL, Audiotag API key and AcoustID API key**
-- Exit automatically with an error message after setup is complete
+![The first start, asking for the webhook and keys](images/setup.png)
 
-  ![Setup](images/setup.png)
+### 5. Add the fingerprint database
 
-### Set Up the Audfprint Database
+Only needed for the Audfprint search. Download the database folders from [wzs.cosine.club](https://wzs.cosine.club) and put them, as they are, into the `database` folder (the files inside end in `.pklz`). The database takes a lot of disk space and is read completely on every Audfprint search, so it is much faster on an SSD than on an external or older hard drive.
 
-After the first run, place the downloaded folders containing the PKLZ files inside the generated `database` folder. This step is required if you plan to use the Audfprint search mode:
+![The database folders inside the database folder](images/database.png)
 
-  ![Setup](images/database.png)
+---
 
-## How To Use WerZatSong
+## Searching for songs
 
-1. **Prepare your MP3 files**
+1. **Put your songs into the `input` folder**: up to **30 MP3 files** per search. Other formats are ignored, so convert them first: typing `ffmpeg -i "my song.flac" "my song.mp3"` in Command Prompt (in the folder where the file is) makes an MP3 copy of any audio file. Simple file names work best.
 
-    - Put the MP3 files you want to identify in the `input` folder (created automatically after setup)
+2. **Start the search** with the searches you want, for example all four:
 
-    - There is a limit of **30 MP3 files per run**, so avoid adding more than that
+   ```
+   node werzatsong.js --audfprint --audiotag --musicbrainz --shazam
+   ```
 
-    - Do not add MP3 files that are too short (under 5 seconds), as they may not be processed correctly
+3. **Wait until it says "Execution complete!"** Closing the window stops the search. The online searches post as soon as they find something; Audfprint takes the longest and posts at the end. A MusicBrainz search takes about five minutes per song, because the AcoustID service only answers a few questions per second.
 
-    - Avoid using filenames that contain rare unicode/special characters to prevent potential errors
+   > [!NOTE]
+   > Don't click inside the Command Prompt window while it runs: Windows pauses the program while text is selected there. If it seems stuck, press **Esc**.
 
-2. **Run WerZatSong**
+4. **Empty the `input` folder** before the next batch. WerZatSong leaves your files there, and the next search would search them again.
 
-    - Use this command in the terminal with the mode(s) you want. For example, to use all modes:
+---
 
-        ```bash
-        node werzatsong.js --audfprint --audiotag --musicbrainz --shazam
-        ```
+## Understanding the results
 
-### General Options
+For every song, each search posts one message to Discord: what it found, or "no match found". If Audfprint finds more matches than fit into one message, the full list is attached as a `.txt` file.
 
-- **`--audfprint`** → Enable Audfprint search mode
-- **`--audiotag`** → Enable Audiotag search mode
-- **`--musicbrainz`** → Enable MusicBrainz (AcoustID) search mode
-- **`--shazam`** → Enable Shazam search mode
-- **`--trim <seconds>`** → Shorten MP3 files to the length you specify (e.g., `--trim 60` for 60 seconds). This should speed things if you are trying to identify long files [**default**: no trim]
+Every search also gets its own folder inside `logs`, named after the date and time it started (in UTC, so the hour may differ from your clock), with one text file per song and search, for example `my song.audfprint.txt`. The Audfprint file explains every column at the top and lists all candidates, the most likely first.
 
-## Search Modes Explained
+### Audfprint labels
 
-### 1. Audfprint
+| Label | Meaning | Posted to Discord |
+|---|---|---|
+| **VERY STRONG** | Almost certainly the same recording | Yes |
+| **STRONG** | Very likely the same recording | Yes |
+| **PROBABLE** | Likely, but worth listening to | Yes |
+| **BORDERLINE** | Could be chance; worth a listen only if nothing better was found | No, log file only |
+| **NO MATCH** | Below every threshold | No, log file only |
 
-Finds matches by comparing your MP3 files to a local database of fingerprints (PKLZ files):
+Each match also shows two numbers:
 
-```bash
-node werzatsong.js --audfprint
+- **aligned**: how many small pieces of sound (fingerprint "hashes") matched *at the same moments* in both recordings. 15 or more usually means a real match.
+- **%** (consistency): the share of all matching pieces that line up in time. Chance alone stays below about 1%; matches below 2% are never posted.
+
+> [!IMPORTANT]
+> Always listen before you trust a result, especially a PROBABLE one.
+
+---
+
+## All options
+
+Options go after `node werzatsong.js`. `node werzatsong.js --help` lists them all.
+
+| Option | What it does | Default |
+|---|---|---|
+| `--audfprint`, `--audiotag`, `--musicbrainz`, `--shazam` | Choose the searches (at least one) | |
+| `--trim <seconds>` | Uses only the first part of each song, for example `--trim 60`. Makes long recordings faster to search. | the whole song |
+| **Audfprint** | | |
+| `--folder <name>` | Searches only one folder inside `database`, for example `--folder "indie-rock"` | the whole database |
+| `--threads <number>` | How many database files are searched at the same time (at most 16; fewer when memory is short) | the computer's processor threads |
+| `--shifts <1–8>` | How carefully your songs are fingerprinted. Higher finds more but is slower. | 4 |
+| `--shard-timeout <minutes>` | How long one database file may take before it is skipped and reported | 15 |
+| `--resume` | Continues a stopped search, see below | |
+| `--merge <folder>` | Database maintenance, see below | |
+| **MusicBrainz** | | |
+| `--duration <min:max>` | Song lengths in seconds to look for (30 to 600). For a short song try `"30:200"`, for a long one `"300:600"`. | `"140:360"` |
+| `--extension <seconds>` | Adds this many seconds before the song is fingerprinted; can help when the recording starts late (1 to 25) | 10 |
+
+### Continuing a stopped search: `--resume`
+
+If an Audfprint search stops before it is finished (the window was closed, the computer restarted, it crashed), type:
+
+```
+node werzatsong.js --audfprint --resume
 ```
 
-#### Additional Audfprint Options
+It searches only the database files that were not finished, keeps what was found before, and reports everything as usual. It only works if you haven't started another search in between: a new search replaces what `--resume` needs.
 
-- **`--folder <subfolder>`** → Selects a specific subfolder inside the `database` folder. This is useful if you want to search only fingerprints within a certain genre or source instead of processing all fingerprints from all folders at once, which takes longer (e.g., `--folder "indie-rock"`)
-- **`--threads <number>`** → Sets the number of processing threads (e.g., `--threads 4`) [**max**: 16] [**default**: max threads available in your machine]
-- **`--shifts <number>`** → Query-side audfprint `--shifts`, from 1 to 8. Higher is more robust but slower (e.g., `--shifts 2` for a quicker search) [**default**: 4]
-- **`--shard-timeout <minutes>`** → How long one database file may take before its matcher is stopped and the file is reported as failed [**default**: 15]
-- **`--resume`** → Continues an Audfprint search that stopped part-way (crash, cancel): only the database files it had not finished are searched, then the results are reported as usual
-- **`--merge <subfolder>`** → Database maintenance: merges the PKLZ files in `database/<subfolder>` into a few large shards, then exits (pass `""` for the database root). `--shard-files <number>` [**default**: 64] sets how many source files go into each merged shard, and `--max-dropped <percent>` [**default**: 3] discards a merged shard that loses more than that share of its hashes to full buckets
+### Faster Audfprint searches
 
-#### Audfprint Search Speed
+- `pip install isal` makes reading the database about three times faster. It is used by itself once installed.
+- `--folder` searches one part of the database instead of all of it, and `--shifts 2` fingerprints your songs more quickly.
+- `--merge <folder>` combines the many small `.pklz` files of a database folder into a few large ones, in a new folder `<folder>__merged`, which can be much faster on a hard drive. It only merges and then stops. Searches of the whole database keep using the originals; search the merged copy with `--folder "<folder>__merged"`. `--shard-files <number>` (default 64) sets how many files go into each merged file, and `--max-dropped <percent>` (default 3) discards a merged file that would lose more than that share of its fingerprints.
+- More switches are in the [settings file](#the-settings-file-env).
 
-Each worker keeps one Python matcher running for the whole search instead of starting Python once per database file, and a PKLZ file is loaded much faster than before. The results of a search are unchanged. Three settings are optional; none is needed:
+---
 
-- **isal** → `python -m pip install isal` makes loading a database file about three times faster. It is used automatically when it is installed; `FAST_INFLATE=off` in `.env` turns it off
-- **`VERIFY_CHECKSUMS=always`** in `.env` → Without isal, the checksum of a database file is verified the first time it is read and about once a month after that, as long as its size and date stay the same (the list is kept in `cache/pklz-verified.json`). This setting verifies every file on every search instead. With isal every file is verified on every search anyway
-- **`DISK_PRIORITY=normal`** in `.env` → Windows only: reads the database at normal disk priority even when WerZatSong runs at low disk priority, which it inherits from whatever program starts it and which otherwise slows a search down a lot
+## The settings file (.env)
 
-When `--audfprint` runs together with `--musicbrainz`, `--audiotag` or `--shazam`, those modes search while Audfprint reads the database instead of before it. They wait on web services (a MusicBrainz search is about five minutes of paced AcoustID lookups per file) and Audfprint waits on the disk, so a run takes about as long as the longer of the two instead of both added up. What is posted, and in which order, is unchanged: the other modes post as they go, and the Audfprint reports wait until they have finished. If a run is stopped, `--resume` names the files the other modes had not searched yet.
+WerZatSong keeps its settings in the file `.env` in its folder. Open it with Notepad (right-click → **Open with** → **Notepad**); each line is `NAME=value`.
 
-- **`SEQUENTIAL_MODES=on`** in `.env` → runs the other modes first and Audfprint after them, one after the other, as before
+| Setting | What it is |
+|---|---|
+| `WEBHOOK_URL` | The Discord webhook the results are posted to |
+| `AUDIOTAG_KEY` | Your Audiotag key |
+| `ACOUSTID_KEY` | Your AcoustID key; several keys can be separated by commas |
+| `NODE_COMMAND`, `PYTHON_COMMAND`, `FFMPEG_COMMAND` | How Node.js, Python and FFmpeg are started (normally `node`, `python`, `ffmpeg`). For a program that isn't on PATH, put its full path, for example `C:\ffmpeg\bin\ffmpeg.exe`. |
+| `DISK_PRIORITY=normal` | *Optional, Windows only:* reads the database at full speed even when WerZatSong was started by a program running it in the background at low priority |
+| `SEQUENTIAL_MODES=on` | *Optional:* runs the online searches first and Audfprint after them, instead of at the same time |
+| `FAST_INFLATE=off` | *Optional:* doesn't use isal even when it is installed |
+| `VERIFY_CHECKSUMS=always` | *Optional:* checks every database file for damage on every search. Without it (and without isal), each file is checked the first time it is read and about once a month after that. |
 
-### 2. Audiotag
+> [!CAUTION]
+> The `.env` file contains your keys and your webhook. Never share it: anyone with the webhook address can post in your channel.
 
-Uses the Audiotag API to search for matches in its online database:
+---
 
-```bash
-node werzatsong.js --audiotag
-```
+## Updating WerZatSong
 
-### 3. MusicBrainz (AcoustID)
+1. Download the new version as a ZIP.
+2. In your WerZatSong folder, **keep** `.env`, `database`, `logs` and `cache`, and **replace everything else** with the new files. Never replace only some files: a mix of old and new files leads to confusing errors that look like bugs.
+3. Type `npm install` and `pip install -r requirements.txt` again.
 
-Uses MusicBrainz (AcoustID API) to search for matches in its online database:
+With Git, step 1 and 2 are just `git pull` in the WerZatSong folder.
 
-```bash
-node werzatsong.js --musicbrainz
-```
+---
 
-#### Additional MusicBrainz Options
+## When something goes wrong
 
-These options help MusicBrainz find matches by tweaking how it searches your MP3 files:
+<details>
+<summary><b>"... is not recognized as an internal or external command"</b></summary>
 
-- **`--duration <min:max>`**
+<br>
 
-  - **What it does**: Sets a song duration range (in seconds) for MusicBrainz to look for matches, like `"140:360"` [**default**: `--duration "140:360"`]
+Windows can't find that program. See [step 1 of the setup](#1-install-nodejs-python-and-ffmpeg), then open a new Command Prompt window.
 
-  - **Why use it**: If your song is much shorter or longer, adjust this so it fits. For example, `--duration "30:200"` for short songs or `--duration "300:600"` for longer ones
+</details>
 
-  - **Limits**: Minimum is 30 seconds, maximum is 600 seconds
+<details>
+<summary><b>"Too many MP3 files! Limit per each search is 30 files..."</b></summary>
 
-- **`--extension <seconds>`**
+<br>
 
-  - **What it does**: Helps MusicBrainz find matches when the start of your MP3 file needs to line up better [**default**: `--extension 10`]
+Search the rest in a second batch. The limit is there because everything an Audfprint search finds is kept in memory until the end, and that grows with every song: hundreds of songs at once can run out of memory ("JavaScript heap out of memory") and lose the whole search.
 
-  - **Why use it**: If your song is missing the beginning, like if it starts late. Try  for example `--extension 15` if you think the beginning it's off by about 15 seconds
+</details>
 
-  - **Limits**: Maximum is 25 seconds
+<details>
+<summary><b>"... is already using this WerZatSong install"</b></summary>
 
-### 4. Shazam
+<br>
 
-Uses the official Shazam API to identify songs:
+Another search is still running from the same folder, maybe in another window. Wait for it to finish.
 
-```bash
-node werzatsong.js --shazam
-```
+</details>
 
-## Where To Find Results
+<details>
+<summary><b>"invalid" webhook URL or API key</b></summary>
 
-Results logs are stored in the **`logs`** folder after the execution finishes. The `.txt` files may contain false positives. Results are listed from top to bottom, with the most likely matches at the top and the least likely at the bottom. The most reliable results (least likely to be false positives) are those sent to your **Discord Webhook**
+<br>
 
-## Development Credits
+Copy it again from Discord or the website, without spaces. A webhook URL starts with `https://discord.com/api/webhooks/`. Keys already saved can be fixed in the [settings file](#the-settings-file-env).
 
-Developed by **Nel** with contributions from **Numerophobe**, **AzureBlast**, **Mystic65** and **EierkuchenHD**
+</details>
+
+<details>
+<summary><b>Nothing arrives in Discord</b></summary>
+
+<br>
+
+Check `WEBHOOK_URL` in the [settings file](#the-settings-file-env). If the webhook was deleted in Discord, make a new one.
+
+</details>
+
+<details>
+<summary><b>A file "is too short to be precomputed" or was skipped</b></summary>
+
+<br>
+
+The recording is too short or almost silent for a fingerprint. The other files are still searched.
+
+</details>
+
+<details>
+<summary><b>"Nothing to resume"</b></summary>
+
+<br>
+
+There is no stopped search to continue (see [`--resume`](#continuing-a-stopped-search---resume)). Start a normal search.
+
+</details>
+
+**Anything else:** please [report it](https://github.com/Nel80s/WerZatSong/issues/new/choose) with the bug report form, and include everything the Command Prompt window showed. Command Prompt may cut off the start of a long output; to keep all of it, add `> output.txt 2>&1` to the end of the command and attach the `output.txt` file it creates.
+
+---
+
+## Credits
+
+Developed by **Nel** with contributions from **Numerophobe**, **AzureBlast**, **Mystic65**, **EierkuchenHD** and **some random account**.
+
+## License
+
+WerZatSong is released under the [MIT License](LICENSE). The bundled programs in `libs` keep their own licenses: audfprint (`libs/audfprint`) by Dan Ellis, and fpcalc (`libs/fpcalc`) from the Chromaprint project.
