@@ -173,8 +173,8 @@ Only needed for the Audfprint search. Download the database folders from [wzs.co
 
 3. **Wait until it says "Execution complete!"** Closing the window stops the search. The online searches post as soon as they find something; Audfprint takes the longest and posts at the end. A MusicBrainz search takes about five minutes per song, because the AcoustID service only answers a few questions per second.
 
-   > [!NOTE]
-   > Don't click inside the Command Prompt window while it runs: Windows pauses the program while text is selected there. If it seems stuck, press **Esc**.
+> [!NOTE]
+> Don't click inside the Command Prompt window while it runs: Windows pauses the program while text is selected there. If it seems stuck, press **Esc**.
 
 4. **Empty the `input` folder** before the next batch. WerZatSong leaves your files there, and the next search would search them again.
 
